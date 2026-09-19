@@ -1,9 +1,19 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#21162f" />
+    <meta name="theme-color" content="#f8f5fc" />
+    <script>
+      // Apply a saved choice before styles load, avoiding a flash of the wrong theme.
+      try {
+        if (localStorage.getItem("nudge-theme") === "dark") {
+          document.documentElement.dataset.theme = "dark";
+          document.querySelector('meta[name="theme-color"]').content =
+            "#21162f";
+        }
+      } catch {}
+    </script>
     <meta
       name="description"
       content="Small nudges. Better habits. Your personal habit companion, across all your devices."

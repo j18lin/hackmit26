@@ -268,6 +268,22 @@ a:focus-visible {
   background: #27253f;
   color: #a7adeb;
 }
+.icon-tile.posture {
+  background: #38224f;
+  color: #deb9ff;
+}
+.icon-tile.screen {
+  background: #30234a;
+  color: #d8c0ff;
+}
+.icon-tile.mindfulness {
+  background: #482439;
+  color: #ffbad2;
+}
+.icon-tile.movement {
+  background: #153d36;
+  color: #a7ead9;
+}
 .count-badge {
   background: #30213e;
   border-color: #4a325d;

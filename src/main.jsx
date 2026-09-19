@@ -40,6 +40,8 @@ import {
 } from "lucide-react";
 import "./styles.css";
 import "./owl-theme.css";
+import "./light-theme.css";
+import { ThemeProvider, ThemeSettings, ThemeToggle } from "./Theme.jsx";
 import { OwlCompanion, OwlIntro } from "./Owl.jsx";
 import { habitPresets, habitFromPreset } from "../shared/habit-presets.js";
 
@@ -284,7 +286,10 @@ function App() {
       <div className="auth-page">
         <div className="auth-top">
           <Logo />
-          <span>YOUR EVERYDAY COMPANION</span>
+          <div className="theme-header-actions">
+            <span className="auth-tagline">YOUR EVERYDAY COMPANION</span>
+            <ThemeToggle />
+          </div>
         </div>
         <div className="auth-grid">
           <div>
@@ -674,6 +679,7 @@ function App() {
             <strong>{page}</strong>
           </div>
           <div className="topbar-right">
+            <ThemeToggle />
             <span className="live-status">
               <span className="status-dot" /> Workspace online
             </span>
@@ -1755,6 +1761,7 @@ function Settings({ state, busy, act, installPrompt, setInstallPrompt }) {
   const [form, setForm] = useState(state.settings);
   return (
     <div className="settings-layout">
+      <ThemeSettings />
       <form
         className="panel settings-form"
         onSubmit={(e) => {
@@ -1865,4 +1872,8 @@ function Settings({ state, busy, act, installPrompt, setInstallPrompt }) {
     </div>
   );
 }
-createRoot(document.getElementById("root")).render(<App />);
+createRoot(document.getElementById("root")).render(
+  <ThemeProvider>
+    <App />
+  </ThemeProvider>,
+);

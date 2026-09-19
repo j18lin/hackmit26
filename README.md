@@ -24,7 +24,7 @@ The server then serves the built website and API together on **http://localhost:
 
 ## What works
 
-- Dark purple owl theme with a clickable, animated fly-away welcome. The intro appears once per tab session and can be replayed by clicking the dashboard owl or **Say hello to your owl** in the sidebar. Keyboard entry, a skip button, and reduced-motion preferences are supported.
+- Light lavender (default) and dark purple owl themes with a clickable, animated fly-away welcome. Switch using the sun/moon button or **Settings → Appearance**. Theme choice saves per browser, syncs between tabs, and is applied before the first paint. The intro appears once per tab session and can be replayed by clicking the dashboard owl or **Say hello to your owl** in the sidebar. Keyboard entry, a skip button, and reduced-motion preferences are supported.
 - Responsive dashboard, habit creation/editing/pausing/deletion, occurrence logging and undo.
 - Daily limits, seven-day occurrence charts, 31-day check-in history, JSON export.
 - SQLite persistence and cross-device refresh every 15 seconds. Day boundaries follow the workspace timezone.

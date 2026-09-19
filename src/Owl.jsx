@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import { ArrowUpRight, Moon, Sparkles } from "lucide-react";
+import { ThemeToggle } from "./Theme.jsx";
 
 // SVG keeps the owl crisp at every size and lets its wings animate independently.
 export function Owl({ className = "" }) {
@@ -198,9 +199,12 @@ export function OwlIntro({ onEnter }) {
             nudge<span className="brand-dot">.</span>
           </span>
         </div>
-        <button className="intro-skip" onClick={onEnter}>
-          Skip intro <ArrowUpRight size={15} />
-        </button>
+        <div className="theme-header-actions">
+          <ThemeToggle />
+          <button className="intro-skip" onClick={onEnter}>
+            Skip intro <ArrowUpRight size={15} />
+          </button>
+        </div>
       </header>
       <div className="intro-content">
         <div className="intro-eyebrow">
