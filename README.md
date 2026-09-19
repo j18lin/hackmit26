@@ -1,0 +1,119 @@
+# Nudge 🌱
+
+A habit-awareness companion for HackMIT 2026. Track several habits you want to reduce, notice patterns, and receive gentle nudges on your phone and laptop. This repository includes the website, persistent API, Web Push server, and an authenticated robot ingestion endpoint.
+
+## Run locally
+
+Requires **Node.js 22.13+** (Node 24 recommended) and npm.
+
+```sh
+npm install
+npm run dev
+```
+
+Open **http://localhost:5173**. Create the workspace with your name and a passphrase of at least 10 characters. Save that passphrase: it signs into the same workspace on other devices. The first setup creates eight editable preset habits; no check-in history or device connections are fabricated. This is a single personal/shared workspace, not a multi-user SaaS.
+
+The frontend runs on port 5173 and proxies `/api` to port 3001. For production:
+
+```sh
+npm run build
+npm start
+```
+
+The server then serves the built website and API together on **http://localhost:3001**. Optional environment variables are documented in `.env.example`; copy it to `.env` to customize. Both server scripts load `.env` automatically. Keep `PORT=3001` during Vite development, or update its proxy too.
+
+## What works
+
+- Dark purple owl theme with a clickable, animated fly-away welcome. The intro appears once per tab session and can be replayed by clicking the dashboard owl or **Say hello to your owl** in the sidebar. Keyboard entry, a skip button, and reduced-motion preferences are supported.
+- Responsive dashboard, habit creation/editing/pausing/deletion, occurrence logging and undo.
+- Daily limits, seven-day occurrence charts, 31-day check-in history, JSON export.
+- SQLite persistence and cross-device refresh every 15 seconds. Day boundaries follow the workspace timezone.
+- Server-originated Web Push to all enabled subscribed devices, including when the page is closed (subject to browser/OS delivery settings).
+- Per-habit scheduled nudges, daily-limit nudges, quiet hours, global pause, per-device pause, disconnection, and test notifications.
+- Installable app manifest, PNG icons, and a push service worker. No private API response caching; dashboard use requires a network connection.
+- Passphrase hashing with scrypt, expiring HttpOnly sessions, request limits, same-origin mutation checks, and push-provider allowlisting.
+- Separately authenticated robot API, key rotation, and robot observation history.
+
+## Habit presets
+
+Choose a preset from **Add habit → Start with a preset** or the library on **My habits**. Presets fill in the name, category, reminder message, and an editable daily threshold. Scheduled nudges start off. New workspaces start with all eight; existing habits and history are preserved, and already-added preset names are marked in the picker.
+
+- Doom scrolling
+- Slouching / bad posture
+- Sitting too long
+- Falling asleep at desk
+- Skipping water breaks
+- Staying up late
+- Smoking
+- Poor lifting habits
+
+All logs currently count unwanted occurrences. Water means **missed water breaks**, and sleep time means **staying up past your intended bedtime**; these are not water-volume or sleep-duration measurements. Thresholds are reminder settings, not recommended health targets. The desk-sleep preset describes an optional spoken math/word challenge through ElevenLabs as **planned**; no voice API is connected yet.
+
+## Phone + laptop notifications
+
+1. Complete initial workspace setup locally before exposing the server.
+2. Deploy the production server behind **HTTPS**, or use an HTTPS development tunnel to **port 3001 after building**. Use the same public URL on each device. Do not expose the Vite development server publicly.
+3. Set `SECURE_COOKIES=true` for HTTPS and `VAPID_SUBJECT=mailto:you@yourdomain.com` to a real contact address. The reverse proxy must preserve the public `Host` header. Run one server instance with a persistent data volume.
+4. Sign in with the same workspace passphrase on each device. In **Devices & robot**, click **Connect this device**, name it, and allow notifications.
+5. On iPhone/iPad (iOS/iPadOS 16.4+), open the HTTPS site in Safari, use **Share → Add to Home Screen**, then launch from the icon before connecting.
+6. Use **Notifications → Send test nudge**. It sends to every enabled device and bypasses quiet hours and the global automatic-nudge toggle. History reports acceptance by the push service, not proof the device displayed it.
+
+Push credentials (VAPID keys) are generated on first startup and saved in SQLite. No paid notification provider is needed. Real push delivery requires internet access and browser permission. Ordinary `http://192.168...` LAN addresses cannot request push permission. Browsers/OS settings, Focus modes, battery restrictions, and connectivity can delay or block delivery.
+
+Reminders are checked every 30 seconds while the server runs. Quiet hours suppress automatic nudges. Equal start/end hours disable quiet time. After downtime or quiet hours, each overdue habit receives at most one reminder, then resumes its interval. Daily-limit nudges fire when a logged occurrence reaches the limit (not for every subsequent occurrence). Undoing that entry and reaching the limit again can send another nudge. Defaults have scheduled reminders off until you choose an interval.
+
+Reference: [Apple Web Push requirements](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/), [Web Push server guide](https://web.dev/articles/codelab-notifications-push-server).
+
+## Robot integration
+
+In **Devices & robot**, generate a robot key. Copy it immediately: only its hash is stored, and replacing it invalidates the previous key. The dialog lists habit IDs. The robot should send an event after its detector identifies an occurrence:
+
+```sh
+curl https://YOUR_HOST/api/robot/events \
+  -H "Authorization: Bearer YOUR_ROBOT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"habitId":"YOUR_HABIT_ID"}'
+```
+
+Events receive a server timestamp and `source: "robot"`. Paused/nonexistent habits reject events. Debounce observations in firmware: each accepted request represents one occurrence. Store the key securely on the device or a local gateway. There is no model inference in this endpoint.
+
+### Future work
+
+- **ElevenLabs:** add a server-side voice/conversation adapter that reads workspace context and logs observations through the existing event path. Keep provider credentials server-side. Voice UI is explicitly marked planned.
+- **Arduino:** add sensor input, a board-compatible inference model, confidence thresholds and debouncing, then forward observations via the robot API. Choose hardware/model after deciding which habits and sensors to detect.
+- Multi-user accounts, account recovery, a durable notification job queue, per-habit routing, and deployment-specific monitoring are future production work.
+
+## API map
+
+| Endpoint                                             | Purpose                                                                      |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `GET /api/session`                                   | First-run / signed-in state                                                  |
+| `POST /api/session`                                  | Create first workspace or sign in                                            |
+| `DELETE /api/session`                                | Sign out this session                                                        |
+| `GET /api/state`                                     | Habits, 31 days of events, devices, settings, latest 50 notification results |
+| `POST /api/habits`, `PUT/DELETE /api/habits/:id`     | Manage habits                                                                |
+| `POST /api/events`, `DELETE /api/events/:id`         | Log/undo manual observations                                                 |
+| `PUT /api/settings`                                  | Timezone, quiet hours and automatic nudges                                   |
+| `POST /api/devices`, `PATCH/DELETE /api/devices/:id` | Register, pause or disconnect push devices                                   |
+| `POST /api/notifications/test`                       | Send test push to enabled devices                                            |
+| `POST /api/robot/key`                                | Generate/rotate robot bearer key                                             |
+| `POST /api/robot/events`                             | Bearer-authenticated robot observation                                       |
+
+All endpoints except session setup/status and robot ingestion require a session cookie. Robot keys grant event ingestion only. Subscription endpoints and private keys are never returned in workspace state.
+
+## Persistence, privacy and deployment
+
+Data lives in `data/nudge.sqlite` (including sessions, generated push keys and subscriptions). `data/`, `.env`, and test scratch files are gitignored. Use a persistent volume and protect backups; habit observations can be sensitive. For a consistent SQLite backup, stop the server before copying the data directory, or use SQLite's backup API. Local database files are not encrypted at rest. There is no passphrase recovery flow yet.
+
+Only run one API instance: its in-process reminder scheduler is intentionally simple for a hackathon. A managed job queue is needed before scaling to multiple replicas. Rate limits use the direct connection IP; with a reverse proxy they can apply collectively. Configure deployment-specific trusted proxy handling before broader production use. Bootstrap the workspace before public access, use HTTPS and a strong passphrase, and share the passphrase only with trusted collaborators.
+
+This prototype supports habit awareness; it is not a medical device or diagnostic tool. Phone delivery is implemented but must be verified with your own subscribed devices on the HTTPS deployment. ElevenLabs and Arduino inference are not yet implemented.
+
+## Checks
+
+```sh
+npm test
+npm run build
+```
+
+Tests cover input validation, timezone boundaries, quiet hours, push endpoint restrictions, authentication/session isolation, CRUD, device registration, and robot ingestion/key rotation. Push fanout tests use a transport stub to check success on both phone and laptop, disabled-device exclusion, expired-subscription removal, and transient-failure retention. API tests create an isolated database under `work/` and start a server on port 3199; they never send real pushes. The simple PWA artwork can be regenerated with `npm run icons`. Use `npm run format` / `npm run format:check` for formatting.
