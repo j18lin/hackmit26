@@ -66,6 +66,45 @@ export function quietNow(date, settings) {
     : hour >= start || hour < end;
 }
 
+export function validateSensorReading(input) {
+  for (const key of ["doomscrolling", "slouching", "sleeping", "drinkingWater"])
+    if (typeof input[key] !== "boolean")
+      throw new Error(`${key} must be true or false.`);
+  if (
+    !Number.isInteger(input.tempRaw) ||
+    input.tempRaw < -32768 ||
+    input.tempRaw > 32767
+  )
+    throw new Error(
+      "tempRaw must be the TMP117's raw 16-bit signed register value (-32768 to 32767).",
+    );
+  return {
+    doomscrolling: input.doomscrolling,
+    slouching: input.slouching,
+    sleeping: input.sleeping,
+    drinkingWater: input.drinkingWater,
+    tempRaw: input.tempRaw,
+  };
+}
+
+// TMP117 resolution is 0.0078125 °C per LSB of its 16-bit two's-complement register.
+export function tmp117ToCelsius(tempRaw) {
+  return tempRaw * 0.0078125;
+}
+
+// The Arduino only reports point-in-time booleans; duration is derived here
+// from how many consecutive readings (ascending by createdAt) had the field
+// on, so firmware never needs a clock or persistent timers of its own.
+export function streakDurationMs(readings, field, now = Date.now()) {
+  if (!readings.length) return 0;
+  const latest = readings[readings.length - 1];
+  if (!latest[field]) return 0;
+  let start = latest.createdAt;
+  for (let i = readings.length - 1; i >= 0 && readings[i][field]; i--)
+    start = readings[i].createdAt;
+  return now - new Date(start).getTime();
+}
+
 export function validateSubscription(subscription) {
   if (!subscription || typeof subscription.endpoint !== "string")
     throw new Error("Invalid push subscription.");

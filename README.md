@@ -32,7 +32,7 @@ The server then serves the built website and API together on **http://localhost:
 - Per-habit scheduled nudges, daily-limit nudges, quiet hours, global pause, per-device pause, disconnection, and test notifications.
 - Installable app manifest, PNG icons, and a push service worker. No private API response caching; dashboard use requires a network connection.
 - Passphrase hashing with scrypt, expiring HttpOnly sessions, request limits, same-origin mutation checks, and push-provider allowlisting.
-- Separately authenticated robot API, key rotation, and robot observation history.
+- Separately authenticated robot API, key rotation, robot observation history, and raw sensor telemetry (booleans plus TMP117 temperature) with server-computed durations.
 
 ## Habit presets
 
@@ -77,29 +77,44 @@ curl https://YOUR_HOST/api/robot/events \
 
 Events receive a server timestamp and `source: "robot"`. Paused/nonexistent habits reject events. Debounce observations in firmware: each accepted request represents one occurrence. Store the key securely on the device or a local gateway. There is no model inference in this endpoint.
 
+### Sensor telemetry
+
+The same robot key also authenticates raw sensor snapshots, one per detector poll:
+
+```sh
+curl https://YOUR_HOST/api/robot/sensors \
+  -H "Authorization: Bearer YOUR_ROBOT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"doomscrolling":true,"slouching":false,"sleeping":false,"drinkingWater":false,"tempRaw":2560}'
+```
+
+`doomscrolling`, `slouching`, `sleeping` and `drinkingWater` are point-in-time booleans; `tempRaw` is the SparkFun TMP117's raw 16-bit signed register value (firmware sends the register as-is, no conversion). The server, not the Arduino, is the source of truth for anything derived from a time series: `GET /api/sensors/latest` returns the latest snapshot (with `tempC` converted at the TMP117's 0.0078125 °C/LSB resolution) plus `doomscrollingDurationMs` and `sleepDurationMs`, each computed by walking back over the last 48 hours of readings to find how long that boolean has been continuously true. Keeping duration and unit conversion server-side means firmware only ever reports what it sees right now.
+
 ### Future work
 
 - **ElevenLabs:** add a server-side voice/conversation adapter that reads workspace context and logs observations through the existing event path. Keep provider credentials server-side. Voice UI is explicitly marked planned.
-- **Arduino:** add sensor input, a board-compatible inference model, confidence thresholds and debouncing, then forward observations via the robot API. Choose hardware/model after deciding which habits and sensors to detect.
+- **Arduino:** poll the detectors and the TMP117 on an interval and forward each snapshot to `/api/robot/sensors`; add confidence thresholds and debouncing before treating a boolean as reliable. Choose hardware/model after deciding which habits and sensors to detect.
 - Multi-user accounts, account recovery, a durable notification job queue, per-habit routing, and deployment-specific monitoring are future production work.
 
 ## API map
 
-| Endpoint                                             | Purpose                                                                      |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `GET /api/session`                                   | First-run / signed-in state                                                  |
-| `POST /api/session`                                  | Create first workspace or sign in                                            |
-| `DELETE /api/session`                                | Sign out this session                                                        |
-| `GET /api/state`                                     | Habits, 31 days of events, devices, settings, latest 50 notification results |
-| `POST /api/habits`, `PUT/DELETE /api/habits/:id`     | Manage habits                                                                |
-| `POST /api/events`, `DELETE /api/events/:id`         | Log/undo manual observations                                                 |
-| `PUT /api/settings`                                  | Timezone, quiet hours and automatic nudges                                   |
-| `POST /api/devices`, `PATCH/DELETE /api/devices/:id` | Register, pause or disconnect push devices                                   |
-| `POST /api/notifications/test`                       | Send test push to enabled devices                                            |
-| `POST /api/robot/key`                                | Generate/rotate robot bearer key                                             |
-| `POST /api/robot/events`                             | Bearer-authenticated robot observation                                       |
+| Endpoint                                             | Purpose                                                                            |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `GET /api/session`                                   | First-run / signed-in state                                                        |
+| `POST /api/session`                                  | Create first workspace or sign in                                                  |
+| `DELETE /api/session`                                | Sign out this session                                                              |
+| `GET /api/state`                                     | Habits, 31 days of events, devices, settings, latest 50 notification results       |
+| `POST /api/habits`, `PUT/DELETE /api/habits/:id`     | Manage habits                                                                      |
+| `POST /api/events`, `DELETE /api/events/:id`         | Log/undo manual observations                                                       |
+| `PUT /api/settings`                                  | Timezone, quiet hours and automatic nudges                                         |
+| `POST /api/devices`, `PATCH/DELETE /api/devices/:id` | Register, pause or disconnect push devices                                         |
+| `POST /api/notifications/test`                       | Send test push to enabled devices                                                  |
+| `POST /api/robot/key`                                | Generate/rotate robot bearer key                                                   |
+| `POST /api/robot/events`                             | Bearer-authenticated robot observation                                             |
+| `POST /api/robot/sensors`                            | Bearer-authenticated sensor snapshot (booleans + TMP117 raw temperature)           |
+| `GET /api/sensors/latest`                            | Latest snapshot, converted temperature, and computed doomscrolling/sleep durations |
 
-All endpoints except session setup/status and robot ingestion require a session cookie. Robot keys grant event ingestion only. Subscription endpoints and private keys are never returned in workspace state.
+All endpoints except session setup/status and robot ingestion require a session cookie. Robot keys grant event and sensor ingestion only. Subscription endpoints and private keys are never returned in workspace state.
 
 ## Persistence, privacy and deployment
 

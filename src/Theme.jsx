@@ -12,17 +12,17 @@ const storageKey = "nudge-theme";
 
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(() =>
-    document.documentElement.dataset.theme === "dark" ? "dark" : "light",
+    document.documentElement.dataset.theme === "light" ? "light" : "dark",
   );
   useLayoutEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.querySelector('meta[name="theme-color"]').content =
-      theme === "dark" ? "#21162f" : "#f8f5fc";
+      theme === "dark" ? "#081028" : "#f8f5fc";
   }, [theme]);
   useEffect(() => {
     const sync = (event) => {
       if (event.key === storageKey || event.key === null)
-        setTheme(event.newValue === "dark" ? "dark" : "light");
+        setTheme(event.newValue === "light" ? "light" : "dark");
     };
     window.addEventListener("storage", sync);
     return () => window.removeEventListener("storage", sync);
@@ -65,7 +65,7 @@ export function ThemeSettings() {
       <div>
         <h2>Choose your kind of light.</h2>
         <p className="muted">
-          Light is the default. Your choice saves automatically in this browser.
+          Dark is the default. Your choice saves automatically in this browser.
         </p>
       </div>
       <div className="theme-options" role="group" aria-label="Color theme">

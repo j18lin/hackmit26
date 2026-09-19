@@ -18,6 +18,9 @@ import {
   dayKey,
   quietNow,
   validateSubscription,
+  validateSensorReading,
+  tmp117ToCelsius,
+  streakDurationMs,
 } from "./domain.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -31,7 +34,9 @@ db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;
   CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, habitId TEXT NOT NULL REFERENCES habits(id) ON DELETE CASCADE, source TEXT NOT NULL, createdAt TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS devices (id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, subscription TEXT NOT NULL, endpoint TEXT NOT NULL UNIQUE, enabled INTEGER NOT NULL DEFAULT 1, createdAt TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS notifications (id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL, sent INTEGER NOT NULL, failed INTEGER NOT NULL, reason TEXT NOT NULL, createdAt TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS sensor_readings (id TEXT PRIMARY KEY, doomscrolling INTEGER NOT NULL, slouching INTEGER NOT NULL, sleeping INTEGER NOT NULL, drinkingWater INTEGER NOT NULL, tempRaw INTEGER NOT NULL, createdAt TEXT NOT NULL);
   CREATE INDEX IF NOT EXISTS events_date ON events(createdAt);
+  CREATE INDEX IF NOT EXISTS sensor_readings_date ON sensor_readings(createdAt);
 `);
 const get = (key) => {
   const row = db.prepare("SELECT value FROM config WHERE key=?").get(key);
@@ -178,7 +183,7 @@ app.delete("/api/session", (req, res) => {
   res.clearCookie("nudge_session", { path: "/" });
   res.json({ ok: true });
 });
-app.post("/api/robot/events", (req, res, next) => {
+function requireRobotKey(req, res, next) {
   const keyHash = get("robotKeyHash");
   const key = req.headers.authorization?.replace(/^Bearer /, "");
   if (
@@ -187,7 +192,30 @@ app.post("/api/robot/events", (req, res, next) => {
     !timingSafeEqual(Buffer.from(hash(key)), Buffer.from(keyHash))
   )
     return res.status(401).json({ error: "Invalid robot API key." });
-  recordEvent(req, res, next, "robot");
+  next();
+}
+app.post("/api/robot/events", requireRobotKey, (req, res, next) =>
+  recordEvent(req, res, next, "robot"),
+);
+app.post("/api/robot/sensors", requireRobotKey, (req, res, next) => {
+  try {
+    const reading = validateSensorReading(req.body);
+    const id = randomUUID();
+    const createdAt = new Date().toISOString();
+    db.prepare("INSERT INTO sensor_readings VALUES (?,?,?,?,?,?,?)").run(
+      id,
+      Number(reading.doomscrolling),
+      Number(reading.slouching),
+      Number(reading.sleeping),
+      Number(reading.drinkingWater),
+      reading.tempRaw,
+      createdAt,
+    );
+    set("robotLastSeen", createdAt);
+    res.status(201).json({ id });
+  } catch (error) {
+    next(error);
+  }
 });
 app.use("/api", (req, res, next) =>
   session(req)
@@ -220,6 +248,26 @@ app.get("/api/state", (req, res) => {
       lastSeen: get("robotLastSeen"),
     },
     publicKey: vapid.publicKey,
+  });
+});
+app.get("/api/sensors/latest", (req, res) => {
+  const readings = db
+    .prepare(
+      "SELECT * FROM sensor_readings WHERE createdAt>=? ORDER BY createdAt ASC",
+    )
+    .all(new Date(Date.now() - 48 * 3600000).toISOString())
+    .map((r) => ({
+      ...r,
+      doomscrolling: Boolean(r.doomscrolling),
+      slouching: Boolean(r.slouching),
+      sleeping: Boolean(r.sleeping),
+      drinkingWater: Boolean(r.drinkingWater),
+    }));
+  const latest = readings[readings.length - 1] || null;
+  res.json({
+    latest: latest && { ...latest, tempC: tmp117ToCelsius(latest.tempRaw) },
+    doomscrollingDurationMs: streakDurationMs(readings, "doomscrolling"),
+    sleepDurationMs: streakDurationMs(readings, "sleeping"),
   });
 });
 app.post("/api/habits", (req, res) => {

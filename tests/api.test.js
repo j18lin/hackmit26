@@ -196,6 +196,41 @@ test("workspace API: authentication, persistence, multi-device settings and robo
       201,
     );
     assert.equal((await call("/state")).value.events[0].source, "robot");
+    const reading = {
+      doomscrolling: true,
+      slouching: false,
+      sleeping: false,
+      drinkingWater: false,
+      tempRaw: 2560,
+    };
+    assert.equal((await call("/robot/sensors", "POST", reading)).status, 401);
+    assert.equal(
+      (
+        await call("/robot/sensors", "POST", reading, {
+          Authorization: `Bearer ${key}`,
+        })
+      ).status,
+      201,
+    );
+    assert.equal(
+      (
+        await call(
+          "/robot/sensors",
+          "POST",
+          { ...reading, tempRaw: 99999 },
+          {
+            Authorization: `Bearer ${key}`,
+          },
+        )
+      ).status,
+      400,
+    );
+    const sensors = (await call("/sensors/latest")).value;
+    assert.equal(sensors.latest.doomscrolling, true);
+    assert.equal(sensors.latest.tempRaw, 2560);
+    assert.equal(sensors.latest.tempC, 20);
+    assert.ok(sensors.doomscrollingDurationMs >= 0);
+    assert.equal(sensors.sleepDurationMs, 0);
     await call("/robot/key", "POST");
     assert.equal(
       (
