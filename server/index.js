@@ -21,7 +21,10 @@ import {
   validateSensorReading,
   tmp117ToCelsius,
   streakDurationMs,
+  createChallenge,
+  checkChallengeAnswer,
 } from "./domain.js";
+import { voiceConfigured, synthesize, transcribe } from "./voice.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dataDir = path.resolve(process.env.DATA_DIR || path.join(root, "data"));
@@ -222,6 +225,119 @@ app.use("/api", (req, res, next) =>
     ? next()
     : res.status(401).json({ error: "Sign in to your workspace." }),
 );
+function requireVoice(req, res, next) {
+  if (!voiceConfigured())
+    return res.status(503).json({
+      error:
+        "Voice is not configured. Add ELEVENLABS_API_KEY to the server environment.",
+    });
+  next();
+}
+const voiceRateLimit = rateLimit({
+  windowMs: 60000,
+  limit: 30,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Slow down a little before more voice requests." },
+});
+const challenges = new Map();
+function currentChallenge(id) {
+  const challenge = challenges.get(id);
+  if (!challenge || challenge.expires <= Date.now()) {
+    challenges.delete(id);
+    return null;
+  }
+  return challenge;
+}
+const voiceRouter = express.Router();
+voiceRouter.use(requireVoice, voiceRateLimit);
+voiceRouter.post("/speak", async (req, res, next) => {
+  const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
+  if (!text || text.length > 400)
+    return res
+      .status(400)
+      .json({ error: "Enter text between 1 and 400 characters." });
+  try {
+    const audio = await synthesize(text);
+    res.set("Content-Type", "audio/mpeg");
+    res.set("Cache-Control", "no-store");
+    res.send(audio);
+  } catch (error) {
+    next(error);
+  }
+});
+voiceRouter.post("/challenge", async (req, res, next) => {
+  const habit = db
+    .prepare("SELECT id,active FROM habits WHERE id=?")
+    .get(String(req.body?.habitId || ""));
+  if (!habit || !habit.active)
+    return res.status(400).json({ error: "Choose an active habit." });
+  for (const [id, challenge] of challenges)
+    if (challenge.expires <= Date.now()) challenges.delete(id);
+  const { prompt, answer } = createChallenge();
+  const id = randomUUID();
+  const expires = Date.now() + 2 * 60000;
+  challenges.set(id, { habitId: habit.id, answer, prompt, expires });
+  res.status(201).json({
+    id,
+    prompt,
+    expiresAt: new Date(expires).toISOString(),
+  });
+});
+voiceRouter.get("/challenge/:id/audio", async (req, res, next) => {
+  const challenge = currentChallenge(req.params.id);
+  if (!challenge)
+    return res.status(404).json({ error: "Challenge not found." });
+  try {
+    const audio = await synthesize(challenge.prompt);
+    res.set("Content-Type", "audio/mpeg");
+    res.set("Cache-Control", "no-store");
+    res.send(audio);
+  } catch (error) {
+    next(error);
+  }
+});
+voiceRouter.post(
+  "/challenge/:id/answer",
+  express.raw({ type: "audio/*", limit: "4mb" }),
+  async (req, res, next) => {
+    const challenge = currentChallenge(req.params.id);
+    if (!challenge)
+      return res.status(404).json({ error: "Challenge not found." });
+    try {
+      const heard = Buffer.isBuffer(req.body)
+        ? await transcribe(
+            req.body,
+            req.headers["content-type"] || "application/octet-stream",
+          )
+        : typeof req.body?.answer === "string"
+          ? req.body.answer.trim()
+          : "";
+      const correct = checkChallengeAnswer(challenge.answer, heard);
+      challenges.delete(req.params.id);
+      if (correct)
+        return res.json({
+          correct: true,
+          heard,
+          message: "Nice, you're awake. Keep going.",
+        });
+      let eventId;
+      try {
+        eventId = (await logOccurrence(challenge.habitId, "voice")).id;
+      } catch {}
+      res.json({
+        correct: false,
+        heard,
+        expected: challenge.answer,
+        ...(eventId ? { eventId } : {}),
+        message: "Let's log that and take a real break.",
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+app.use("/api/voice", voiceRouter);
 app.get("/api/state", (req, res) => {
   res.json({
     name: get("account").name,
@@ -247,6 +363,7 @@ app.get("/api/state", (req, res) => {
       configured: Boolean(get("robotKeyHash")),
       lastSeen: get("robotLastSeen"),
     },
+    voice: { configured: voiceConfigured() },
     publicKey: vapid.publicKey,
   });
 });
@@ -310,39 +427,43 @@ app.delete("/api/habits/:id", (req, res) => {
   db.prepare("DELETE FROM habits WHERE id=?").run(req.params.id);
   res.json({ ok: true });
 });
+async function logOccurrence(habitId, source = "manual") {
+  const habit = db
+    .prepare("SELECT * FROM habits WHERE id=?")
+    .get(String(habitId || ""));
+  if (!habit || !habit.active)
+    throw Object.assign(new Error("Choose an active habit."), { status: 400 });
+  const now = new Date();
+  const settings = get("settings");
+  const count = db
+    .prepare("SELECT createdAt FROM events WHERE habitId=? AND createdAt>?")
+    .all(habit.id, new Date(Date.now() - 48 * 3600000).toISOString())
+    .filter(
+      (e) =>
+        dayKey(e.createdAt, settings.timezone) ===
+        dayKey(now, settings.timezone),
+    ).length;
+  const id = randomUUID();
+  db.prepare("INSERT INTO events VALUES (?,?,?,?)").run(
+    id,
+    habit.id,
+    source,
+    now.toISOString(),
+  );
+  if (source === "robot") set("robotLastSeen", now.toISOString());
+  if (count + 1 === habit.dailyLimit)
+    await sendNudge(
+      "A little reset?",
+      habit.description ||
+        `Check in with your ${habit.name.toLowerCase()} habit.`,
+      "limit",
+      habit.id,
+    );
+  return { id };
+}
 async function recordEvent(req, res, next, source = "manual") {
   try {
-    const habit = db
-      .prepare("SELECT * FROM habits WHERE id=?")
-      .get(String(req.body.habitId || ""));
-    if (!habit || !habit.active)
-      return res.status(400).json({ error: "Choose an active habit." });
-    const now = new Date();
-    const settings = get("settings");
-    const count = db
-      .prepare("SELECT createdAt FROM events WHERE habitId=? AND createdAt>?")
-      .all(habit.id, new Date(Date.now() - 48 * 3600000).toISOString())
-      .filter(
-        (e) =>
-          dayKey(e.createdAt, settings.timezone) ===
-          dayKey(now, settings.timezone),
-      ).length;
-    const id = randomUUID();
-    db.prepare("INSERT INTO events VALUES (?,?,?,?)").run(
-      id,
-      habit.id,
-      source,
-      now.toISOString(),
-    );
-    if (source === "robot") set("robotLastSeen", now.toISOString());
-    if (count + 1 === habit.dailyLimit)
-      await sendNudge(
-        "A little reset?",
-        habit.description ||
-          `Check in with your ${habit.name.toLowerCase()} habit.`,
-        "limit",
-        habit.id,
-      );
+    const { id } = await logOccurrence(req.body?.habitId, source);
     res.status(201).json({ id });
   } catch (error) {
     next(error);
