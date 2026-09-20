@@ -40,7 +40,7 @@ async function request(url, options) {
 }
 
 export async function synthesize(text) {
-  const voiceId = process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM";
+  const voiceId = process.env.ELEVENLABS_VOICE_ID || "JBFqnCBsd6RMkjVDRZzb";
   const modelId = process.env.ELEVENLABS_MODEL_ID || "eleven_turbo_v2_5";
   const response = await request(
     `${baseUrl()}/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_64`,
