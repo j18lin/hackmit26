@@ -1375,8 +1375,9 @@ function App() {
               Insights, and set quiet hours under Settings.
             </p>
             <div className="info-strip">
-              The robot integration and Arduino detection are future features;
-              voice needs an ElevenLabs key on the server.
+              This is a habit-awareness prototype, not a medical device. Arduino
+              detection is a future feature; voice needs an ElevenLabs key on
+              the server.
             </div>
           </div>
         </Modal>
