@@ -1,12 +1,14 @@
 // Owlert robot: Arduino/Elegoo UNO R3 (ATmega328P)
 // Startup demo: ANGRY -> NEUTRAL -> SAD -> NEUTRAL -> HAPPY -> NEUTRAL.
 // SG90 positional neck servo: both expressions travel 79 <-> 101 degrees.
-// This demo does not process laptop serial commands.
+// Accepts laptop serial commands (NEGATIVE/POSITIVE/NORMAL/PING) and drives
+// the same face+pose sequences the startup demo below uses.
 
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <Servo.h>
 #include <avr/pgmspace.h>
+#include <string.h>
 
 #if !defined(ARDUINO_AVR_UNO)
 #error "Select Arduino AVR Boards > Arduino Uno."
@@ -305,10 +307,69 @@ void updateBlink(unsigned long now) {
   }
 }
 
+// --- laptop serial control ---------------------------------------------
+// The host (server/mood.js via server/arduino.js) decides the mood from the
+// live habit densities and sends one line at a time, 115200 baud:
+//   NEGATIVE  -> alternates ANGRY/SAD so repeats don't look identical
+//   POSITIVE  -> happy
+//   NORMAL / NEUTRAL -> resting face
+//   PING      -> PONG
+// Each command runs the same setFaceAndPose() the startup demo uses, so the
+// arm/neck sequences are exactly the ones tuned here.
+char serialLine[24];
+uint8_t serialLength = 0;
+bool overflowed = false;
+bool lastNegativeWasAngry = false;
+
+void handleCommand(char *command) {
+  for (char *c = command; *c; ++c)
+    if (*c >= 'a' && *c <= 'z') *c -= 'a' - 'A';
+
+  if (strcmp(command, "NEGATIVE") == 0) {
+    // Alternate rather than random: a repeated scolding still varies, but
+    // stays reproducible when demoing.
+    lastNegativeWasAngry = !lastNegativeWasAngry;
+    setFaceAndPose(lastNegativeWasAngry ? ANGRY_FACE : SAD_FACE);
+    Serial.println(F("ACK NEGATIVE"));
+  } else if (strcmp(command, "POSITIVE") == 0) {
+    setFaceAndPose(HAPPY_FACE);
+    Serial.println(F("ACK POSITIVE"));
+  } else if (strcmp(command, "NORMAL") == 0 || strcmp(command, "NEUTRAL") == 0) {
+    setFaceAndPose(NORMAL_FACE);
+    Serial.println(F("ACK NORMAL"));
+  } else if (strcmp(command, "PING") == 0) {
+    Serial.println(F("PONG"));
+  } else {
+    Serial.println(F("ERR COMMAND: use NORMAL, NEGATIVE, POSITIVE, or PING"));
+  }
+}
+
+void readCommands() {
+  while (Serial.available() > 0) {
+    char c = Serial.read();
+    if (c == '\n' || c == '\r') {
+      if (serialLength > 0 && !overflowed) {
+        serialLine[serialLength] = '\0';
+        handleCommand(serialLine);
+      }
+      serialLength = 0;
+      overflowed = false;
+      continue;
+    }
+    // Drop anything over-long rather than wrapping it into a stray command.
+    if (serialLength >= sizeof(serialLine) - 1) {
+      overflowed = true;
+      continue;
+    }
+    serialLine[serialLength++] = c;
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   initDisplay();
-  Serial.println(F("MODE DEMO_NECK_BIDIRECTIONAL"));
+  Serial.println(F("MODE SERIAL_CONTROLLED"));
+  Serial.println(F("READY OWLERT_UNO 115200"));
 
   // // 1. ANGRY (snappy head shake, arms out)
   // setFaceAndPose(ANGRY_FACE);
@@ -337,6 +398,7 @@ void setup() {
 
 void loop() {
   unsigned long now = millis();
+  readCommands();
   updateServosSmooth();
   updateBlink(now);
 }
