@@ -29,10 +29,10 @@ function addHabit(db, id, name, category) {
   );
 }
 
-test("only doomscrolling and drinking water are offered as valid starter habits", () => {
+test("the camera-detected habits are offered as valid starter habits", () => {
   assert.deepEqual(
     habitPresets.map((p) => p.name),
-    ["Doomscrolling", "Drinking water"],
+    ["Doomscrolling", "Drinking water", "Slouching", "Hands off your face"],
   );
   for (const preset of habitPresets)
     assert.doesNotThrow(() => validateHabit(habitFromPreset(preset)));
@@ -56,12 +56,12 @@ test("focus migration archives retired starters without deleting history or repl
       .prepare("SELECT name FROM habits WHERE archived=0 ORDER BY name")
       .all()
       .map((h) => h.name),
-    ["Doomscrolling", "Drinking water"],
+    ["Doomscrolling", "Drinking water", "Hands off your face", "Slouching"],
   );
   assert.equal(
     db.prepare("SELECT COUNT(*) AS count FROM habits WHERE archived=1").get()
       .count,
-    4,
+    3,
   );
   assert.equal(
     db

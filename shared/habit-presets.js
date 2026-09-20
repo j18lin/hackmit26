@@ -19,6 +19,23 @@ export const habitPresets = [
       "Make time for a water break. Log a missed break when you need a reminder.",
     hint: "Track missed water breaks, not the glasses of water you drink.",
   },
+  {
+    key: "slouching",
+    name: "Slouching",
+    category: "posture",
+    dailyLimit: 5,
+    description: "Notice your posture. Take a moment to reset your position.",
+    hint: "Detected automatically when your head drops toward your shoulders.",
+  },
+  {
+    key: "hand-near-face",
+    name: "Hands off your face",
+    category: "posture",
+    dailyLimit: 5,
+    description:
+      "Nail biting, rubbing your eyes, resting your head on your hand — notice it and put your hand down.",
+    hint: "Detected automatically when a hand comes up near your face.",
+  },
 ];
 
 export function habitFromPreset(preset) {

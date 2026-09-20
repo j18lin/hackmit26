@@ -35,6 +35,7 @@ Usage:
 
 import argparse
 import json
+from collections import deque
 import os
 import re
 import socket
@@ -150,7 +151,7 @@ class WebcamStream:
     fall behind and start sending stale frames.
     """
 
-    def __init__(self, camera_index: int, video_size: str = "640x480", fps: int = 15):
+    def __init__(self, camera_index: int, video_size: str = "640x480", fps: int = 30):
         self.proc = subprocess.Popen(
             [
                 "ffmpeg", "-loglevel", "error",
@@ -162,13 +163,25 @@ class WebcamStream:
                 "pipe:1",
             ],
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
         )
         self._latest = None
         self._lock = threading.Lock()
         self._stop = threading.Event()
+        # Keep ffmpeg's own diagnostics: without them a failed open just
+        # looks like "camera busy", when it's usually an unsupported
+        # framerate/size combination and ffmpeg said so explicitly.
+        self._errors = deque(maxlen=12)
         self._thread = threading.Thread(target=self._reader, daemon=True)
         self._thread.start()
+        self._err_thread = threading.Thread(target=self._drain_errors, daemon=True)
+        self._err_thread.start()
+
+    def _drain_errors(self):
+        for line in self.proc.stderr:
+            text = line.decode("utf-8", "replace").rstrip()
+            if text:
+                self._errors.append(text)
 
     def _reader(self):
         buf = b""
@@ -194,7 +207,13 @@ class WebcamStream:
                 if self._latest is not None:
                     return self._latest
             if self.proc.poll() is not None:
-                raise RuntimeError("ffmpeg exited -- is the camera in use or permission denied?")
+                # Give the stderr drain a moment to catch up before reporting.
+                time.sleep(0.2)
+                detail = "\n  ".join(self._errors) or "no output from ffmpeg"
+                raise RuntimeError(
+                    "ffmpeg exited -- the camera may be in use, permission denied, "
+                    f"or the requested format unsupported. ffmpeg said:\n  {detail}"
+                )
             time.sleep(0.02)
         raise RuntimeError(f"no webcam frame within {timeout}s")
 
@@ -216,16 +235,27 @@ def format_labels(result: dict) -> str:
     # confidently visible -- that's "don't know", not "sitting up straight".
     if not result["calibration"]["calibrated"]:
         labels = ["posture ? (not calibrated)"]
-    elif result.get("head_height") is None:
+    elif result.get("head_height") is None and not result.get("posture_held"):
         labels = ["posture ?"]
-    elif reading["slouching"]:
-        labels = ["posture down"]
     else:
-        labels = ["posture up"]
+        # "held" = this frame wasn't readable, so the last known posture is
+        # being carried forward.
+        suffix = " (held)" if result.get("posture_held") else ""
+        labels = [("posture down" if reading["slouching"] else "posture up") + suffix]
 
     phone = "yes" if reading["doomscrolling"] else "no"
     bottle = "yes" if reading["drinkingWater"] else "no"
     line = f"{' · '.join(labels):<16} | phone: {phone:<4} | bottle: {bottle:<4}"
+
+    # Hand-near-face. None means the wrists weren't visible at all, which is
+    # the norm unless the camera is framed wide enough to include your arms.
+    hand_up = result.get("hand_near_face")
+    distance = result.get("hand_distance")
+    if hand_up is None:
+        hand = "?"
+    else:
+        hand = f"{'NEAR' if hand_up else 'away'} {distance:.2f}"
+    line += f" | hand: {hand:<9}"
 
     # Every COCO label the detector returned, down to a low threshold -- this
     # is how you find out what a given object actually reads as.
@@ -240,8 +270,8 @@ def format_labels(result: dict) -> str:
     parts = []
     for field, short in (("slouching", "slouch"), ("doomscrolling", "phone")):
         p = progress.get(field)
-        if p and p["samples"]:
-            parts.append(f"{short} {p['density']:.0%}/{p['window_filled_s']:.0f}s")
+        if p and p["seconds"]:
+            parts.append(f"{short} {p['progress']:.0%} ({p['seconds']:.0f}/{p['trigger_s']:.0f}s)")
     if parts:
         line += f" | {' '.join(parts)}"
 
@@ -282,6 +312,8 @@ def print_verbose(result: dict) -> None:
     print(f"pose: {result['pose_info']}")
     print(f"head_height: {result['head_height']} (blocked by: {result['posture_blocker']})"
           f"  drop: {result['head_drop']}  calibration: {result['calibration']}")
+    print(f"hand_near_face: {result.get('hand_near_face')} "
+          f"(distance: {result.get('hand_distance')}, blocked by: {result.get('hand_blocker')})")
     print(f"detect: {result['detect_info']}")
     print(f"detections: {result['detections']}")
     print(f"proximity: {result['proximity']}")
@@ -384,7 +416,7 @@ def main():
     parser.add_argument("--no-calibrate", action="store_true",
                         help="skip the automatic 5s calibration when no baseline exists yet")
     parser.add_argument("--reset-calibration", action="store_true", help="throw away the stored baseline, then exit")
-    parser.add_argument("--fps", type=int, default=15, help="webcam capture frame rate")
+    parser.add_argument("--fps", type=int, default=30, help="webcam capture frame rate")
     parser.add_argument("--video-size", type=str, default="640x480", help="webcam capture resolution")
     args = parser.parse_args()
 

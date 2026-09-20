@@ -5,3 +5,6 @@ __pycache__/
 
 # per-session posture baselines (runtime state)
 posture_calibration*.json
+
+# YOLO-World weights, re-downloaded on demand by ultralytics (25MB)
+*.pt

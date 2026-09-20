@@ -13,6 +13,7 @@ import {
   Clock3,
   Download,
   Droplets,
+  PersonStanding,
   Dumbbell,
   Eye,
   Footprints,
@@ -141,8 +142,13 @@ function relative(date) {
         ? `${Math.floor(min / 60)}h ago`
         : `${Math.floor(min / 1440)}d ago`;
 }
+// Slouching is still tracked end to end -- the Uno Q reports it and the
+// violations table stores it -- so it belongs here even though it's no
+// longer one of the habit presets.
 const SENSOR_ALERT_FIELDS = [
   { field: "doomscrolling", label: "Doomscrolling", icon: Smartphone },
+  { field: "slouching", label: "Slouching", icon: PersonStanding },
+  { field: "handNearFace", label: "Hands off your face", icon: Hand },
   { field: "drinkingWater", label: "Missed water breaks", icon: Droplets },
 ];
 function Logo({ small = false }) {
@@ -882,6 +888,35 @@ function App() {
                     <span>Based on your check-ins</span>
                   </div>
                 </section>
+
+                <section className="panel">
+                  <div className="panel-heading">
+                    <div>
+                      <h2>What the robot saw</h2>
+                      <p>
+                        Detected automatically by your camera, last{" "}
+                        {state.violations?.windowHours ?? 48} hours
+                      </p>
+                    </div>
+                    <span className="icon-tile posture">
+                      <Activity />
+                    </span>
+                  </div>
+                  <div className="sensor-stats">
+                    {SENSOR_ALERT_FIELDS.map(({ field, label, icon: Icon }) => {
+                      const count = state.violations?.counts?.[field] ?? 0;
+                      const lastAt = state.violations?.lastAt?.[field];
+                      return (
+                        <div className="sensor-stat" key={field}>
+                          <Icon size={18} />
+                          <strong>{count}</strong>
+                          <span>{label}</span>
+                          <small>{count > 0 ? relative(lastAt) : "none yet"}</small>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
                 <section className="panel">
                   <div className="panel-heading">
                     <div>
@@ -1163,7 +1198,6 @@ function App() {
           )}
           {page === "Devices & robot" && (
             <>
-              <VisionMonitor />
               <section className="panel">
                 <div className="panel-heading">
                   <div>
@@ -1320,6 +1354,9 @@ function App() {
             </span>
             <span>Made with care · HackMIT 2026</span>
           </footer>
+          {/* Always mounted: monitoring keeps running once started,
+              whatever page you navigate to. Only the panel hides. */}
+          <VisionMonitor visible={page === "Devices & robot"} />
         </main>
       </div>
       {toast && (
@@ -1484,7 +1521,10 @@ function EmptyHabits({ onAdd }) {
 // terminal; that script still works and talks to the same board.
 const CALIBRATION_SECONDS = 5;
 
-function VisionMonitor() {
+// `visible` only controls whether the panel is shown. The component stays
+// mounted on every page so monitoring keeps running when you navigate away
+// -- unmounting would stop the camera and lose the density windows.
+function VisionMonitor({ visible = true }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
@@ -1517,6 +1557,16 @@ function VisionMonitor() {
 
   useEffect(() => {
     loadCameras();
+    // A refresh always tears down the MediaStream -- the JS context is gone.
+    // The camera *permission* survives on a secure origin though, so if
+    // monitoring was on we can silently pick it back up instead of making
+    // the user click Start again. Wrapped because a revoked permission or a
+    // non-secure origin must fail quietly, not throw on mount.
+    try {
+      if (localStorage.getItem("owlert-monitoring") === "on") start();
+    } catch {
+      /* storage unavailable (private mode) */
+    }
     return () => stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1524,6 +1574,11 @@ function VisionMonitor() {
   function stop() {
     runningRef.current = false;
     setRunning(false);
+    try {
+      localStorage.setItem("owlert-monitoring", "off");
+    } catch {
+      /* non-fatal */
+    }
     setPhase("idle");
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
@@ -1572,6 +1627,11 @@ function VisionMonitor() {
 
     runningRef.current = true;
     setRunning(true);
+    try {
+      localStorage.setItem("owlert-monitoring", "on");
+    } catch {
+      /* non-fatal */
+    }
     // Recalibrate on every start: the baseline depends on where you're
     // sitting and how the camera is angled right now.
     setPhase("calibrating");
@@ -1631,7 +1691,7 @@ function VisionMonitor() {
   );
 
   return (
-    <section className="panel">
+    <section className="panel" hidden={!visible}>
       <div className="panel-heading">
         <div>
           <h2>Camera monitoring</h2>
@@ -1699,24 +1759,72 @@ function VisionMonitor() {
                 : "not seen",
           )}
 
+          {/* Live proximity meter: how near a hand is to your face, in
+              shoulder widths. Fills as the hand approaches; the marker is
+              the threshold that counts as touching. Distance is null when
+              the wrists aren't visible, which is common on a tight crop. */}
+          <div className="vision-meter">
+            <div className="vision-meter-head">
+              <strong>Hand to face</strong>
+              <span>
+                {result?.hand_distance != null
+                  ? `${result.hand_distance.toFixed(2)} widths`
+                  : (result?.hand_blocker ?? "—")}
+              </span>
+            </div>
+            <div className={`vision-bar meter${result?.hand_near_face ? " hot" : ""}`}>
+              <div
+                style={{
+                  width: `${
+                    result?.hand_distance != null
+                      ? Math.max(0, Math.min(1, 1 - result.hand_distance / 1.5)) * 100
+                      : 0
+                  }%`,
+                }}
+              />
+              <i className="vision-marker" style={{ left: "50%" }} />
+            </div>
+            <small>
+              {result?.hand_near_face === true
+                ? "touching your face"
+                : result?.hand_near_face === false
+                  ? "hands away"
+                  : "can't see your hands"}
+            </small>
+          </div>
+
           {phase === "watching" && (
             <div className="vision-progress">
-              {["slouching", "doomscrolling"].map((field) => {
+              {["slouching", "doomscrolling", "handNearFace"].map((field) => {
                 const p = progress[field];
-                if (!p?.samples) return null;
+                if (!p?.seconds) return null;
                 return (
                   <div key={field}>
-                    <span>{field === "slouching" ? "Slouching" : "Phone use"}</span>
+                    <span>
+                      {{ slouching: "Slouching", doomscrolling: "Phone use", handNearFace: "Hand on face" }[field]}
+                    </span>
                     <div className="vision-bar">
-                      <div style={{ width: `${Math.min(p.density * 100, 100)}%` }} />
+                      <div style={{ width: `${Math.min(p.progress * 100, 100)}%` }} />
                     </div>
                     <small>
-                      {Math.round(p.density * 100)}% of last{" "}
-                      {Math.round(p.window_filled_s)}s
+                      {Math.round(p.seconds)}s of {Math.round(p.trigger_s)}s
                     </small>
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {result?.mood && (
+            <div className={`vision-mood mood-${result.mood.mood.toLowerCase()}`}>
+              <strong>Owlert is</strong>
+              <span>
+                {{
+                  UNHAPPY: "unhappy",
+                  NEUTRAL: "neutral",
+                  HAPPY: "happy",
+                }[result.mood.mood] || result.mood.mood.toLowerCase()}
+              </span>
             </div>
           )}
 

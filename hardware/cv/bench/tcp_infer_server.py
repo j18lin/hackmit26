@@ -43,7 +43,6 @@ files + coco_labelmap.txt into ./models -- see DEVICE.md):
 
 import argparse
 import json
-from collections import deque
 import socket
 import struct
 import time
@@ -117,6 +116,25 @@ MIN_SHOULDER_WIDTH = 0.05
 # widths) to count as slouching. Rough starting guess.
 SLOUCH_DROP_THRESHOLD = 0.15
 
+# When a frame isn't readable (a shoulder drops below confidence, which
+# happens constantly), carry the last known posture forward rather than
+# throwing the frame away -- posture doesn't actually change frame to frame.
+# Capped so we can't keep reporting on someone who has left the frame.
+POSTURE_HOLD_SECONDS = 5.0
+
+# --- hand-near-face heuristic ---
+#
+# Distance from either wrist to the face, in shoulder widths (same
+# scale-invariant normalization as head_height, so it doesn't change with
+# how near you sit). A shoulder width is roughly 1.5 head widths, so a hand
+# actually touching the face lands well under 1.0.
+#
+# NOTE: this needs the wrists visible. On a tight head-and-shoulders webcam
+# crop they score ~0.1 and never clear POSE_CONF_THRESHOLD, so the check
+# returns "unknown" and nothing fires. It only becomes usable if the camera
+# is framed to include the upper body/arms.
+HAND_NEAR_FACE_THRESHOLD = 0.75
+
 # Calibration runs for a wall-clock window rather than a frame count, since
 # frame rate depends on how fast the client polls (~0.8s/frame today). The
 # minimum guards against finishing on one or two readable frames if the
@@ -134,6 +152,13 @@ MODE_RESET_CALIBRATION = b"R"
 # --- phone/drink proximity heuristic: nearest watched-object box to a
 # person box, normalized by the person bbox diagonal ---
 SCORE_THRESHOLD = 0.4
+
+# Per-label overrides. Bottles score lower than phones on this camera --
+# they're often partly occluded by a hand and less distinctive than a dark
+# rectangle -- so they need a lower bar to register at all. Anything not
+# listed uses SCORE_THRESHOLD.
+LABEL_SCORE_THRESHOLDS = {"bottle": 0.2}
+
 PROXIMITY_THRESHOLD = 0.6
 
 # Everything above this is *reported* (so you can see what COCO label an
@@ -152,26 +177,34 @@ RELEVANT_LABELS = WATCHED_LABELS | {PERSON_LABEL}
 
 # --- violation thresholds ---
 #
-# Density over a sliding window, not a continuous streak: both detectors are
-# noisy (the pose model regularly loses a shoulder, the detector drops a
-# phone for a frame or two), so requiring an unbroken run of true frames
-# means a single bad frame resets the clock and nothing ever fires. Instead:
-# "was this true for most of the last minute?".
+# Accumulated bad *time*, not a ratio of frames. A sliding-window density
+# behaves inconsistently: early on the window holds few samples so one bad
+# frame swings it wildly, and once it's full you need to out-vote every good
+# frame already banked -- so the same behaviour is easy to trigger at first
+# and progressively harder later. Counting seconds is frame-rate independent
+# and behaves identically at any point in a session.
 #
-# Currently 60s everywhere for testing -- real values should differ per habit.
-VIOLATION_WINDOW_SEC = {
+# Seconds of bad time needed to fire. Currently 60s everywhere for testing.
+VIOLATION_TRIGGER_SEC = {
     "doomscrolling": 60.0,
     "slouching": 60.0,
     "sleeping": 60.0,
-    "drinkingWater": 60.0,
+    # No trigger: a *missed* water break is decided by the backend, which
+    # is the only side that knows when a reminder was pushed to the phone
+    # (see server/water-check.js). The board just reports whether a bottle
+    # is visible; None keeps it out of the accumulator entirely.
+    "drinkingWater": None,
+    "handNearFace": 60.0,
 }
 
-# Fraction of *valid* frames in the window that must be true. Frames where
-# the signal couldn't be judged at all (e.g. posture with a missing shoulder)
-# are excluded from the denominator rather than counted as false, so dropouts
-# don't quietly suppress real violations.
-VIOLATION_DENSITY = 0.6
-VIOLATION_MIN_SAMPLES = 10
+# Sitting properly drains the accumulator at this fraction of real time, so
+# recovery is possible but slower than offending -- fixing your posture for a
+# moment shouldn't wipe out a minute of slouching.
+VIOLATION_RECOVERY_RATE = 0.5
+
+# Ignore gaps longer than this between frames (client paused, board rebooted,
+# laptop slept) so a long absence can't dump a huge chunk of "bad time" in.
+VIOLATION_MAX_STEP_SEC = 2.0
 
 # Which expression the robot (owlert_robot.ino, over the serial bridge --
 # see arduino_expression.py) plays when a given field's violation fires.
@@ -184,64 +217,169 @@ VIOLATION_EXPRESSIONS = {
 }
 
 
-class ViolationTracker:
-    """Fires when a field was true for most of a sliding time window.
+LEFT_WRIST, RIGHT_WRIST = 9, 10
 
-    Density rather than an unbroken streak, because both detectors drop
-    frames often enough that a streak-based rule would essentially never
-    fire. A field fires when its window is full (spans the configured
-    duration), has enough samples, and the true fraction clears
-    VIOLATION_DENSITY.
 
-    After firing, that field's window is cleared, so the next violation
-    needs a fresh window's worth of evidence instead of re-firing on every
-    subsequent frame.
+def hand_near_face(keypoints):
+    """Is either hand up near the face?
+
+    Returns (value, distance, reason). value is True/False, or None when it
+    can't be judged -- a wrist below confidence means "arm not visible",
+    which must not be reported as "hand is down".
+
+    Distance is to the nose when it's visible, otherwise to the midpoint of
+    whatever eyes/ears are, so the check survives the nose dropping out (it
+    only clears threshold ~70% of the time). Normalized by shoulder width so
+    it doesn't scale with seating distance.
+    """
+    l_sh_y, l_sh_x, l_sh_conf = keypoints[LEFT_SHOULDER]
+    r_sh_y, r_sh_x, r_sh_conf = keypoints[RIGHT_SHOULDER]
+    if min(l_sh_conf, r_sh_conf) < POSE_CONF_THRESHOLD:
+        return None, None, "can't see shoulders"
+
+    shoulder_width = abs(float(l_sh_x) - float(r_sh_x))
+    if shoulder_width < MIN_SHOULDER_WIDTH:
+        return None, None, "shoulders too close together to measure against"
+
+    # Face anchor: nose if we have it, else whatever eyes/ears are visible.
+    face_points = [
+        (float(keypoints[i][1]), float(keypoints[i][0]))
+        for i in (NOSE, LEFT_EYE, RIGHT_EYE, LEFT_EAR, RIGHT_EAR)
+        if keypoints[i][2] >= POSE_CONF_THRESHOLD
+    ]
+    if not face_points:
+        return None, None, "can't see the face"
+    face_x = sum(x for x, _ in face_points) / len(face_points)
+    face_y = sum(y for _, y in face_points) / len(face_points)
+
+    distances = []
+    for index in (LEFT_WRIST, RIGHT_WRIST):
+        wrist_y, wrist_x, wrist_conf = keypoints[index]
+        if wrist_conf < POSE_CONF_THRESHOLD:
+            continue
+        dx = float(wrist_x) - face_x
+        dy = float(wrist_y) - face_y
+        distances.append(((dx * dx + dy * dy) ** 0.5) / shoulder_width)
+
+    if not distances:
+        # The common case on a head-and-shoulders crop: arms simply aren't
+        # in frame. Unknown, not "hands down".
+        return None, None, "can't see either wrist"
+
+    nearest = round(min(distances), 3)
+    return bool(nearest < HAND_NEAR_FACE_THRESHOLD), nearest, None
+
+
+class PostureHold:
+    """Carries the last known posture across unreadable frames.
+
+    MoveNet loses a shoulder often enough that treating every unreadable
+    frame as "unknown" leaves posture undetermined much of the time, even
+    though the person's actual posture is unchanged. So the last reading is
+    reused until it goes stale.
+
+    update() returns (value, held): value is True/False/None, where None
+    means genuinely unknown (nothing seen recently), and held says whether
+    the value was carried over rather than measured this frame.
     """
 
-    def __init__(self, windows: dict, density: float, min_samples: int):
-        self.windows = windows
-        self.density = density
-        self.min_samples = min_samples
-        self.samples = {field: deque() for field in windows}
+    def __init__(self, hold_seconds: float):
+        self.hold_seconds = hold_seconds
+        self.value = None
+        self.at = None
+
+    def update(self, measured, now: float):
+        if measured is not None:
+            self.value = measured
+            self.at = now
+            return measured, False
+        if self.value is not None and now - self.at <= self.hold_seconds:
+            return self.value, True
+        # Gone stale -- stop asserting anything.
+        self.value = None
+        self.at = None
+        return None, False
+
+    def age(self, now: float):
+        return round(now - self.at, 1) if self.at is not None else None
+
+
+class ViolationTracker:
+    """Accumulates how much *time* each field has spent in a bad state.
+
+    Each field has a running score in seconds: it climbs in real time while
+    the field is true, and drains at VIOLATION_RECOVERY_RATE while it's
+    false. Crossing the field's trigger fires a violation and resets it.
+
+    Deliberately not a frame-ratio: a ratio depends on how full the window
+    is, which makes a habit easy to trigger at the start of a session and
+    progressively harder later. Seconds behave the same throughout, and
+    survive a variable frame rate.
+
+    Frames where the signal couldn't be judged (e.g. posture with a missing
+    shoulder) neither accumulate nor drain -- time simply doesn't pass for
+    that field.
+    """
+
+    def __init__(self, triggers: dict, recovery_rate: float, max_step: float):
+        self.triggers = triggers
+        self.recovery_rate = recovery_rate
+        self.max_step = max_step
+        self.score = {field: 0.0 for field in triggers}
+        # Only consulted for instantaneous (0-trigger) fields: once fired,
+        # the field has to go false before it can fire again, so a visible
+        # bottle logs one violation rather than one per frame.
+        self.armed = {field: True for field in triggers}
+        self.last_at = None
 
     def update(self, reading: dict, now: float, valid: dict = None) -> list[str]:
+        step = 0.0 if self.last_at is None else min(now - self.last_at, self.max_step)
+        self.last_at = now
+
         fired = []
-        for field, window in self.windows.items():
-            # A frame that couldn't be judged contributes nothing either way.
+        for field, trigger in self.triggers.items():
+            # A None trigger means "reported, never fired here" -- something
+            # else owns that decision.
+            if trigger is None:
+                continue
             if valid is not None and not valid.get(field, True):
                 continue
 
-            samples = self.samples[field]
-            samples.append((now, bool(reading.get(field))))
-            cutoff = now - window
-            while samples and samples[0][0] < cutoff:
-                samples.popleft()
+            is_true = bool(reading.get(field))
+            if is_true:
+                self.score[field] += step
+            else:
+                self.score[field] = max(
+                    0.0, self.score[field] - step * self.recovery_rate
+                )
+                self.armed[field] = True
 
-            if len(samples) < self.min_samples:
-                continue
-            # Require a (nearly) full window, so we never fire on a short
-            # burst that merely happens to be 100% true.
-            if samples[-1][0] - samples[0][0] < window * 0.9:
-                continue
-            if sum(1 for _, value in samples if value) / len(samples) >= self.density:
+            # Must currently be true to fire: without this a 0-second
+            # trigger would fire on every frame, since score >= 0 always.
+            if is_true and self.armed[field] and self.score[field] >= trigger:
                 fired.append(field)
-                samples.clear()
+                self.score[field] = 0.0
+                self.armed[field] = False
         return fired
 
-    def progress(self, now: float) -> dict:
-        """Per-field view of how close each field is to firing."""
-        out = {}
-        for field, window in self.windows.items():
-            samples = self.samples[field]
-            count = len(samples)
-            true_count = sum(1 for _, value in samples if value)
-            out[field] = {
-                "density": round(true_count / count, 2) if count else 0.0,
-                "samples": count,
-                "window_filled_s": round(samples[-1][0] - samples[0][0], 1) if count else 0.0,
-                "window_s": window,
+    def progress(self, now: float = None) -> dict:
+        """How close each field is to firing, as elapsed bad time and as a
+        0-1 fraction of its trigger (what the dashboard draws as a bar)."""
+        return {
+            field: {
+                # Instantaneous fields (0 trigger) have no ramp to show: they
+                # read 0 until they fire. Guarding the divide, not just the
+                # display, because 0 triggers are a supported setting.
+                "progress": (
+                    round(min(score / self.triggers[field], 1.0), 3)
+                    if self.triggers[field]
+                    else 0.0
+                ),
+                "seconds": round(score, 1),
+                "trigger_s": self.triggers[field],
             }
-        return out
+            for field, score in self.score.items()
+        }
 
 
 def load_interpreter(model_path):
@@ -410,6 +548,11 @@ def box_diagonal(box):
     return ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
 
 
+def score_threshold_for(label):
+    """Confidence a detection needs before it can drive a verdict."""
+    return LABEL_SCORE_THRESHOLDS.get(label, SCORE_THRESHOLD)
+
+
 def decode_detections(boxes, classes, scores, labels, frame_shape, threshold=SCORE_THRESHOLD):
     """Detections above threshold as (label, score, (x1,y1,x2,y2)) in pixels."""
     h, w = frame_shape[:2]
@@ -529,7 +672,7 @@ def send_json(conn, payload_obj):
     return payload_obj
 
 
-def handle_connection(conn, interpreters, labels, tracker, calibration):
+def handle_connection(conn, interpreters, labels, tracker, calibration, posture_hold):
     server_recv_start = time.perf_counter()
     mode = recv_exact(conn, 1)
     (length,) = struct.unpack(">I", recv_exact(conn, 4))
@@ -561,7 +704,15 @@ def handle_connection(conn, interpreters, labels, tracker, calibration):
             "pose_ms": round(pose_ms, 2),
         })
 
-    is_slouching, head_drop = calibration.check_slouching(metric)
+    now = time.time()
+    # None (not False) when this frame couldn't be judged, so the hold below
+    # can tell "measured as fine" apart from "no idea".
+    measured_slouching = None
+    head_drop = None
+    if metric is not None and calibration.baseline is not None:
+        measured_slouching, head_drop = calibration.check_slouching(metric)
+    slouching, posture_held = posture_hold.update(measured_slouching, now)
+    hand_up, hand_distance, hand_blocker = hand_near_face(keypoints)
 
     classify_ms, class_scores = run_classify(interpreters["classify"], frame_rgb)
     states, class_label, class_confidence = classify_states(class_scores)
@@ -578,20 +729,27 @@ def handle_connection(conn, interpreters, labels, tracker, calibration):
             boxes, classes, scores, labels, frame_bgr.shape, DETECT_REPORT_THRESHOLD
         )
         states = check_proximity_states(
-            [d for d in detections if d[1] >= SCORE_THRESHOLD]
+            [d for d in detections if d[1] >= score_threshold_for(d[0])]
         )
 
     reading = {
         "doomscrolling": "on phone" in states,
-        "slouching": bool(is_slouching),
+        "slouching": bool(slouching),
         "sleeping": False,  # not detected yet, see MODELS.md
         "drinkingWater": "drinking" in states,
+        # None (wrists not visible) must not read as False here; the valid
+        # map below keeps those frames out of the accumulator entirely.
+        "handNearFace": bool(hand_up),
         "tempRaw": 2700,  # placeholder, no real temp sensor wired up yet
     }
-    # Posture is only a real "not slouching" when it was actually readable;
-    # otherwise the frame is excluded from the window entirely.
-    now = time.time()
-    violations = tracker.update(reading, now, valid={"slouching": metric is not None})
+    # A held value still counts toward the window -- it's a real
+    # classification, just carried over. Only genuinely unknown posture
+    # (nothing measured recently) is excluded.
+    violations = tracker.update(
+        reading,
+        now,
+        valid={"slouching": slouching is not None, "handNearFace": hand_up is not None},
+    )
     # Physical reaction disabled for now while the rest of the system is
     # being checked out end to end. Re-enable to make the robot react:
     # if violations:
@@ -607,6 +765,15 @@ def handle_connection(conn, interpreters, labels, tracker, calibration):
         "head_height": metric,
         "head_drop": head_drop,
         "posture_blocker": posture_blocker,
+        # True when this frame was unreadable and the previous posture
+        # was carried forward instead.
+        "posture_held": posture_held,
+        "posture_age_s": posture_hold.age(now),
+        # Hand-near-face: None when the wrists aren't visible at all,
+        # which is the norm on a tight head-and-shoulders crop.
+        "hand_near_face": hand_up,
+        "hand_distance": hand_distance,
+        "hand_blocker": hand_blocker,
         "bytes_received": length,
         "server_recv_ms": round(server_recv_ms, 2),
         "decode_ms": round(decode_ms, 2),
@@ -660,8 +827,11 @@ def main():
         "classify": load_interpreter(CLASSIFY_MODEL_PATH),
     }
     labels = load_labels(LABELMAP_PATH)
-    tracker = ViolationTracker(VIOLATION_WINDOW_SEC, VIOLATION_DENSITY, VIOLATION_MIN_SAMPLES)
+    tracker = ViolationTracker(
+        VIOLATION_TRIGGER_SEC, VIOLATION_RECOVERY_RATE, VIOLATION_MAX_STEP_SEC
+    )
     calibration = PostureCalibration(CALIBRATION_PATH)
+    posture_hold = PostureHold(POSTURE_HOLD_SECONDS)
     print(f"Posture calibration: {calibration.status()}", flush=True)
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_sock:
@@ -675,7 +845,9 @@ def main():
             with conn:
                 print(f"Connection from {addr}", flush=True)
                 try:
-                    result = handle_connection(conn, interpreters, labels, tracker, calibration)
+                    result = handle_connection(
+                        conn, interpreters, labels, tracker, calibration, posture_hold
+                    )
                     print(f"  -> {result}", flush=True)
                 except Exception as e:
                     print(f"  error handling connection: {e}", flush=True)

@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { habitPresets } from "../shared/habit-presets.js";
 
+// Slouching and bad posture are no longer retired: the camera detects both,
+// so they're supported starter habits again (see habitPresets).
 const retired = [
-  ["slouching", "posture"],
-  ["bad posture", "posture"],
   ["screen overload", "screen"],
   ["nail biting", "mindfulness"],
   ["sitting too long", "movement"],
@@ -12,6 +12,16 @@ const retired = [
   ["smoking", "smoking"],
   ["poor lifting habits", "lifting"],
 ];
+
+// Old names that should be adopted by a preset rather than left behind as a
+// duplicate. Keyed by preset, so adding a preset doesn't silently inherit
+// another one's aliases.
+const presetAliases = {
+  "doom-scrolling": ["doomscrolling", "doom scrolling"],
+  "water-breaks": ["drinking water", "skipping water breaks"],
+  slouching: ["slouching", "bad posture"],
+  "hand-near-face": ["hands off your face", "nail biting"],
+};
 
 // One-time, non-destructive retirement of the old starter set. Existing IDs,
 // reminder settings, and history stay in SQLite; archived rows are not tracked.
@@ -38,13 +48,12 @@ export function migrateFocusedHabits(db) {
     );
     for (const [name, category] of retired) archive.run(name, category);
     for (const preset of habitPresets) {
-      const aliases =
-        preset.key === "doom-scrolling"
-          ? ["doomscrolling", "doom scrolling"]
-          : ["drinking water", "skipping water breaks"];
+      const aliases = presetAliases[preset.key] ?? [preset.name.toLowerCase()];
       const existing = db
         .prepare(
-          "SELECT id FROM habits WHERE archived=0 AND category=? AND lower(trim(name)) IN (?,?) ORDER BY createdAt LIMIT 1",
+          `SELECT id FROM habits WHERE archived=0 AND category=?
+             AND lower(trim(name)) IN (${aliases.map(() => "?").join(",")})
+           ORDER BY createdAt LIMIT 1`,
         )
         .get(preset.category, ...aliases);
       if (existing) {

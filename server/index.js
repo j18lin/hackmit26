@@ -34,6 +34,12 @@ import {
   MODE_CALIBRATE,
   MODE_RESET,
 } from "./vision.js";
+import { updateMood } from "./mood.js";
+import {
+  openWaterWindow,
+  updateWaterCheck,
+  waterStatus,
+} from "./water-check.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dataDir = path.resolve(process.env.DATA_DIR || path.join(root, "data"));
@@ -217,6 +223,30 @@ app.post("/api/robot/events", requireRobotKey, (req, res, next) =>
 // duration threshold and posts one violation per crossing — this endpoint
 // is intentionally just "state += 1", no snapshot payload to validate
 // beyond which field fired.
+// Which habit each sensed field counts against. Without this a detected
+// violation lands in the violations table only, and the habit cards on the
+// dashboard never move -- they count rows in `events`.
+const FIELD_HABITS = {
+  doomscrolling: "Doomscrolling",
+  slouching: "Slouching",
+  handNearFace: "Hands off your face",
+  drinkingWater: "Drinking water",
+};
+
+// Logs the habit occurrence for a sensed violation. Best-effort: a missing
+// or paused habit must not stop the violation itself being recorded.
+function logHabitForField(field) {
+  const name = FIELD_HABITS[field];
+  if (!name) return;
+  const habit = db
+    .prepare("SELECT id FROM habits WHERE name=? AND archived=0 AND active=1")
+    .get(name);
+  if (!habit) return;
+  logOccurrence(habit.id, "robot").catch((error) =>
+    console.error(`Could not log ${field} occurrence:`, error.message),
+  );
+}
+
 // Shared by the robot-key endpoint and the browser vision bridge, so a
 // violation is recorded identically no matter which one reports it.
 function recordViolation(field) {
@@ -230,6 +260,7 @@ function recordViolation(field) {
   // Field decides the expression: drinking water is praised, everything else
   // is scolded.
   reactToViolation(field);
+  logHabitForField(field);
   return id;
 }
 
@@ -274,7 +305,23 @@ app.post(
         field,
         id: recordViolation(field),
       }));
-      res.json({ ...result, recorded });
+      // The robot tracks the build-up, not just the moment a violation
+      // lands: sad as the density climbs, angry when one fires, easing back
+      // to normal and then happy once things stay quiet.
+      // A missed break is recorded here, not on the board: only the
+      // backend knows when a reminder was pushed.
+      const water = updateWaterCheck(result.reading || {});
+      const violations = [...(result.violations || [])];
+      if (water === "missed") {
+        violations.push("drinkingWater");
+        recorded.push({ field: "drinkingWater", id: recordViolation("drinkingWater") });
+      }
+      const mood = updateMood(
+        result.violation_progress,
+        violations,
+        result.reading || {},
+      );
+      res.json({ ...result, recorded, mood, water: waterStatus() });
     } catch (error) {
       // The board reboots often and gets unplugged; report it as upstream
       // trouble rather than a server fault so the UI can just keep polling.
@@ -690,6 +737,9 @@ const timer = setInterval(async () => {
         "reminder",
         habit.id,
       );
+      // Water is checked rather than just suggested: show a bottle within
+      // the grace window or it counts as a missed break.
+      if (habit.category === "hydration") openWaterWindow();
     }
   } catch (error) {
     console.error("Reminder failed:", error.message);

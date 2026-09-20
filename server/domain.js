@@ -142,7 +142,14 @@ export function quietNow(date, settings) {
 // (e.g. slouching continuously past its own duration threshold) and only
 // reports the fact that it happened, not a continuous stream of booleans —
 // so the backend just counts occurrences instead of deriving streaks.
-export const violationFields = ["doomscrolling", "slouching", "sleeping", "drinkingWater"];
+export const violationFields = [
+  "doomscrolling",
+  "slouching",
+  "sleeping",
+  "drinkingWater",
+  // Hand up at the face: nail biting, rubbing eyes, resting head on a hand.
+  "handNearFace",
+];
 
 export function validateViolation(input) {
   if (!violationFields.includes(input.field))

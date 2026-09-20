@@ -43,6 +43,16 @@ export function reactPositive() {
   return send("POSITIVE");
 }
 
+// The sketch's entire vocabulary. There is deliberately no ANGRY/SAD here:
+// the board picks between those two faces itself on NEGATIVE.
+const EXPRESSIONS = new Set(["NEGATIVE", "NORMAL", "NEUTRAL", "POSITIVE"]);
+
+export function sendExpression(expression) {
+  if (!EXPRESSIONS.has(expression))
+    throw new Error(`unknown expression: ${expression}`);
+  return send(expression);
+}
+
 export function resetExpression() {
   return send("NORMAL");
 }

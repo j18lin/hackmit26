@@ -148,10 +148,12 @@ test("workspace API: authentication, persistence, multi-device settings and robo
     assert.equal(signedIn.status, 200);
     assert.match(signedIn.setCookie, /; Secure/i);
     const initial = (await call("/state")).value;
-    assert.equal(initial.habits.length, 2);
+    assert.equal(initial.habits.length, 4);
     assert.deepEqual(initial.habits.map((h) => h.name).sort(), [
       "Doomscrolling",
       "Drinking water",
+      "Hands off your face",
+      "Slouching",
     ]);
     assert.equal(initial.events.length, 0);
     assert.equal(initial.voice.configured, true);
@@ -175,7 +177,7 @@ test("workspace API: authentication, persistence, multi-device settings and robo
         )
         .run(new Date().toISOString());
       const focused = (await call("/state")).value;
-      assert.equal(focused.habits.length, 2);
+      assert.equal(focused.habits.length, 4);
       assert.equal(focused.events.length, 0);
       assert.equal(
         (await call("/events", "POST", { habitId: "retired" })).status,
@@ -471,14 +473,19 @@ test("workspace API: authentication, persistence, multi-device settings and robo
       200,
     );
     assert.notEqual(cookie, firstCookie);
-    assert.equal((await call("/state")).value.habits.length, 4);
+    assert.equal((await call("/state")).value.habits.length, 6);
     await call("/session", "DELETE");
     assert.equal((await call("/state")).status, 401);
     cookie = firstCookie;
     assert.equal((await call("/state")).status, 200);
     await call("/habits/" + id, "DELETE");
     await call("/habits/" + deskSleep.id, "DELETE");
-    assert.equal((await call("/state")).value.events.length, 0);
+    // The doomscrolling violation above also logs an occurrence against the
+    // Doomscrolling preset, so one robot-sourced event outlives the two
+    // custom habits deleted here.
+    const remaining = (await call("/state")).value.events;
+    assert.equal(remaining.length, 1);
+    assert.equal(remaining[0].source, "robot");
     await call("/devices/" + device.value.id, "DELETE");
     assert.equal((await call("/state")).value.devices.length, 0);
   } finally {
