@@ -4,27 +4,28 @@ tcp_infer_server.py runs) to its own microcontroller side (where
 hardware/owlert_robot/owlert_robot.ino runs, controlling the LCD eyes +
 servos), over the board's built-in Linux<->MCU serial bridge.
 
-This is Arduino's own inter-processor link, not a separate USB cable: the
-sketch's `Serial` object is bridged to /dev/ttyGS0 on the Linux side by the
-arduino-router-serial service (already running by default on UNO Q). One
-command per line, case-insensitive: NEUTRAL, ANGRY, SAD -- see the sketch's
-handleCommand() for what each does.
+This is Arduino's own inter-processor link, not a separate USB cable. The
+arduino-router service owns the physical UART to the microcontroller
+(/dev/ttyHS1 @ 115200) and exposes it as a monitor socket on
+127.0.0.1:7500 -- so we talk to that, NOT to the serial device directly
+(the router already holds it open) and NOT to /dev/ttyGS0 (that's just a
+socat proxy of the same monitor out to a USB host, for a computer plugged
+into the board).
 
-Opening the port is best-effort and never raises: if the sketch hasn't
-been uploaded yet, or the bridge isn't up, this just logs and no-ops,
-so it can't take down tcp_infer_server.py's inference loop.
+One command per line, case-insensitive: NEUTRAL, ANGRY, SAD -- see the
+sketch's handleCommand() for what each does.
+
+Connecting is best-effort and never raises: if the sketch hasn't been
+uploaded yet, or the router isn't up, this just logs and no-ops, so it
+can't take down tcp_infer_server.py's inference loop.
 """
 
+import socket
 import sys
 import threading
 
-try:
-    import serial
-except ImportError:
-    serial = None
-
-PORT = "/dev/ttyGS0"
-BAUD = 9600
+ROUTER_HOST = "127.0.0.1"
+ROUTER_PORT = 7500
 
 VALID_COMMANDS = {"NEUTRAL", "ANGRY", "SAD"}
 
@@ -35,19 +36,18 @@ _warned = False
 
 def _get_connection():
     global _conn, _warned
-    if serial is None:
-        if not _warned:
-            print("arduino_expression: pyserial not installed, expressions disabled", file=sys.stderr)
-            _warned = True
-        return None
-    if _conn is not None and _conn.is_open:
+    if _conn is not None:
         return _conn
     try:
-        _conn = serial.Serial(PORT, BAUD, timeout=0.5)
+        _conn = socket.create_connection((ROUTER_HOST, ROUTER_PORT), timeout=2.0)
         return _conn
-    except (serial.SerialException, FileNotFoundError) as e:
+    except OSError as e:
         if not _warned:
-            print(f"arduino_expression: could not open {PORT} ({e}), expressions disabled", file=sys.stderr)
+            print(
+                f"arduino_expression: could not reach arduino-router at "
+                f"{ROUTER_HOST}:{ROUTER_PORT} ({e}), expressions disabled",
+                file=sys.stderr,
+            )
             _warned = True
         return None
 
@@ -60,17 +60,20 @@ def send_expression(command: str) -> bool:
     if command not in VALID_COMMANDS:
         raise ValueError(f"command must be one of {VALID_COMMANDS}, got {command!r}")
 
+    global _conn
     with _lock:
         conn = _get_connection()
         if conn is None:
             return False
         try:
-            conn.write(f"{command}\n".encode("ascii"))
-            conn.flush()
+            conn.sendall(f"{command}\n".encode("ascii"))
             return True
-        except serial.SerialException as e:
-            print(f"arduino_expression: write failed ({e}), will retry connection next time", file=sys.stderr)
-            global _conn
+        except OSError as e:
+            print(f"arduino_expression: send failed ({e}), will reconnect next time", file=sys.stderr)
+            try:
+                conn.close()
+            except OSError:
+                pass
             _conn = None
             return False
 

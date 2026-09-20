@@ -94,6 +94,8 @@ curl https://YOUR_HOST/api/robot/violations \
 
 `field` must be one of `doomscrolling`, `slouching`, `sleeping`, `drinkingWater`. Each accepted request is one violation — the server does no threshold or duration math, it just counts occurrences and prunes anything older than the retention window (`config/constants.yaml`, `violations.windowHours`, 48h by default). `GET /api/violations/latest` returns the per-field counts and last-seen timestamps over that window. Keeping the threshold decision on-device means firmware only ever reports "this just happened," and the backend stays a thin, stateless counter.
 
+If `ARDUINO_SERIAL_PORT` is set (see `.env.example`), each accepted violation also writes a `NEGATIVE` command over USB serial to a physical Elegoo/Arduino Uno R3 running `hardware/owlert_robot/owlert_robot.ino` (LCD face + servo reaction), via `server/arduino.js`. This is entirely optional and a no-op with no port configured — it never blocks or fails the API response.
+
 ### Future work
 
 - **Arduino:** run the detectors on an interval, track how long each one stays continuously true on-device, and call `/api/robot/violations` once a field's own duration threshold is crossed; add confidence thresholds and debouncing before treating a boolean as reliable. Choose hardware/model after deciding which habits and sensors to detect.

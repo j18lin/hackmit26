@@ -44,6 +44,15 @@ per crossing. The server does no threshold math at all — this is literally
 "state += 1" for that field. Do not call it once per poll/frame; only call
 it when your own logic has decided a violation just happened.
 
+Each accepted call also sends a `NEGATIVE` command over USB serial to a
+second, separate Arduino (an Elegoo/Arduino Uno R3 running
+`hardware/owlert_robot/owlert_robot.ino`, LCD face + servos), if
+`ARDUINO_SERIAL_PORT` is set on whichever machine runs this backend — see
+`server/arduino.js`. This is independent of the Uno Q inference board this
+doc is otherwise about; it's a physical reaction on the backend host, not
+the CV device. No env var set means no-op, so this never blocks a violation
+POST from succeeding.
+
 ### Request body
 
 ```json

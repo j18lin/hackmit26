@@ -26,6 +26,14 @@ import {
 } from "./domain.js";
 import { violationWindowHours } from "./constants.js";
 import { voiceConfigured, synthesize, transcribe } from "./voice.js";
+import { arduinoConfigured, reactToViolation } from "./arduino.js";
+import {
+  sendFrame,
+  visionTarget,
+  MODE_INFER,
+  MODE_CALIBRATE,
+  MODE_RESET,
+} from "./vision.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dataDir = path.resolve(process.env.DATA_DIR || path.join(root, "data"));
@@ -209,21 +217,26 @@ app.post("/api/robot/events", requireRobotKey, (req, res, next) =>
 // duration threshold and posts one violation per crossing — this endpoint
 // is intentionally just "state += 1", no snapshot payload to validate
 // beyond which field fired.
+// Shared by the robot-key endpoint and the browser vision bridge, so a
+// violation is recorded identically no matter which one reports it.
+function recordViolation(field) {
+  const id = randomUUID();
+  const createdAt = new Date().toISOString();
+  db.prepare(
+    "DELETE FROM violations WHERE createdAt<?",
+  ).run(new Date(Date.now() - violationWindowHours * 3600000).toISOString());
+  db.prepare("INSERT INTO violations VALUES (?,?,?)").run(id, field, createdAt);
+  set("robotLastSeen", createdAt);
+  // Field decides the expression: drinking water is praised, everything else
+  // is scolded.
+  reactToViolation(field);
+  return id;
+}
+
 app.post("/api/robot/violations", requireRobotKey, (req, res, next) => {
   try {
     const { field } = validateViolation(req.body);
-    const id = randomUUID();
-    const createdAt = new Date().toISOString();
-    db.prepare("DELETE FROM violations WHERE createdAt<?").run(
-      new Date(Date.now() - violationWindowHours * 3600000).toISOString(),
-    );
-    db.prepare("INSERT INTO violations VALUES (?,?,?)").run(
-      id,
-      field,
-      createdAt,
-    );
-    set("robotLastSeen", createdAt);
-    res.status(201).json({ id });
+    res.status(201).json({ id: recordViolation(field) });
   } catch (error) {
     next(error);
   }
@@ -233,6 +246,45 @@ app.use("/api", (req, res, next) =>
     ? next()
     : res.status(401).json({ error: "Sign in to your workspace." }),
 );
+
+// --- Browser vision bridge (session-authed; everything below this point
+// requires a signed-in workspace) ---
+//
+// The browser can't reach the Uno Q's TCP inference server directly, so it
+// POSTs JPEG frames here and we forward them. Violations decided on the
+// board are recorded on its behalf, which also means the browser never
+// needs the robot key.
+app.post(
+  "/api/vision/frame",
+  express.raw({ type: "image/jpeg", limit: "4mb" }),
+  async (req, res) => {
+    const modes = { infer: MODE_INFER, calibrate: MODE_CALIBRATE, reset: MODE_RESET };
+    const mode = modes[req.query.mode || "infer"];
+    if (!mode)
+      return res.status(400).json({ error: "mode must be infer, calibrate or reset." });
+    if (mode !== MODE_RESET && !req.body?.length)
+      return res.status(400).json({ error: "Expected a JPEG body." });
+
+    try {
+      const result = await sendFrame(
+        Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0),
+        mode,
+      );
+      const recorded = (result.violations || []).map((field) => ({
+        field,
+        id: recordViolation(field),
+      }));
+      res.json({ ...result, recorded });
+    } catch (error) {
+      // The board reboots often and gets unplugged; report it as upstream
+      // trouble rather than a server fault so the UI can just keep polling.
+      res.status(502).json({ error: error.message });
+    }
+  },
+);
+
+app.get("/api/vision/status", (req, res) => res.json(visionTarget()));
+
 function violationSummary() {
   const cutoff = new Date(
     Date.now() - violationWindowHours * 3600000,
@@ -382,6 +434,7 @@ app.get("/api/state", (req, res) => {
     },
     violations: violationSummary(),
     voice: { configured: voiceConfigured() },
+    arduino: { configured: arduinoConfigured() },
     publicKey: vapid.publicKey,
   });
 });
