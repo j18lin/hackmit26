@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { owlify } from "../server/voice.js";
 import {
   validateHabit,
   quietNow,
@@ -128,15 +129,21 @@ test("streak duration sums only the unbroken run of true readings up to now", ()
 });
 test("voice challenges produce solvable prompts", () => {
   const challenge = createChallenge(() => 0);
-  assert.match(challenge.prompt, /what is \d+ (plus|times) \d+\?/);
+  assert.match(challenge.prompt, /What is \d+ (plus|times) \d+\?/);
   const [, first, operation, second] = challenge.prompt.match(
-    /what is (\d+) (plus|times) (\d+)\?/,
+    /What is (\d+) (plus|times) (\d+)\?/,
   );
   assert.equal(
     challenge.answer,
     operation === "plus"
       ? Number(first) + Number(second)
       : Number(first) * Number(second),
+  );
+});
+test("owlify wraps text in owl hoots", () => {
+  assert.equal(
+    owlify("Drink water.", () => 0),
+    "Hoo-hoo! Drink water. Wise up and rest well.",
   );
 });
 test("spoken numbers parse digits and English number words", () => {

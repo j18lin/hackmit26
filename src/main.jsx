@@ -1522,17 +1522,23 @@ function VoiceCheckModal({ habit, onClose, act, reload, setError }) {
   const [seconds, setSeconds] = useState(0);
   const [recording, setRecording] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
   const recorder = useRef(null);
   const stream = useRef(null);
   const chunks = useRef([]);
+  const held = useRef(false);
+  const mounted = useRef(true);
 
   useEffect(() => {
-    let mounted = true;
     act(() => api("/voice/challenge", "POST", { habitId: habit.id })).then(
       async (data) => {
-        if (!mounted || !data) return;
-        setChallenge(data);
+        if (!mounted.current) return;
         setLoading(false);
+        if (!data) {
+          setFailed(true);
+          return;
+        }
+        setChallenge(data);
         setSeconds(
           Math.max(
             0,
@@ -1543,7 +1549,7 @@ function VoiceCheckModal({ habit, onClose, act, reload, setError }) {
       },
     );
     return () => {
-      mounted = false;
+      mounted.current = false;
       stream.current?.getTracks().forEach((track) => track.stop());
       if (recorder.current?.state === "recording") recorder.current.stop();
     };
@@ -1605,10 +1611,16 @@ function VoiceCheckModal({ habit, onClose, act, reload, setError }) {
       typeof MediaRecorder === "undefined"
     )
       return;
+    held.current = true;
     try {
-      stream.current = await navigator.mediaDevices.getUserMedia({
+      const s = await navigator.mediaDevices.getUserMedia({
         audio: true,
       });
+      if (!held.current || !mounted.current) {
+        s.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      stream.current = s;
       const supported =
         typeof MediaRecorder.isTypeSupported === "function" &&
         MediaRecorder.isTypeSupported("audio/webm");
@@ -1645,6 +1657,7 @@ function VoiceCheckModal({ habit, onClose, act, reload, setError }) {
   }
 
   function stopRecording() {
+    held.current = false;
     if (recorder.current?.state === "recording") {
       setRecording(false);
       recorder.current.stop();
@@ -1656,6 +1669,13 @@ function VoiceCheckModal({ habit, onClose, act, reload, setError }) {
       <div className="voice-check modal-form">
         {loading ? (
           <LoaderCircle className="spin" />
+        ) : failed ? (
+          <>
+            <p className="muted">Couldn't start the voice check.</p>
+            <button className="button secondary" onClick={onClose}>
+              Close
+            </button>
+          </>
         ) : (
           <>
             <p className="muted">
@@ -1713,8 +1733,8 @@ function VoiceCheckModal({ habit, onClose, act, reload, setError }) {
                 {!result.correct && (
                   <span>
                     Heard “{result.heard || "nothing"}”; expected{" "}
-                    <strong>{result.expected}</strong>. An occurrence was
-                    logged.
+                    <strong>{result.expected}</strong>.
+                    {result.logged ? " An occurrence was logged." : ""}
                   </span>
                 )}
               </div>

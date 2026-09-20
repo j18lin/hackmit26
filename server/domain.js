@@ -53,7 +53,7 @@ export function createChallenge(rand = Math.random) {
       ? 2 + Math.floor(rand() * 19)
       : 2 + Math.floor(rand() * 8);
   return {
-    prompt: `Quick check: what is ${first} ${operation} ${second}?`,
+    prompt: `Whooo's awake? What is ${first} ${operation} ${second}?`,
     answer: operation === "plus" ? first + second : first * second,
   };
 }

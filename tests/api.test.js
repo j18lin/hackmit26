@@ -173,7 +173,7 @@ test("workspace API: authentication, persistence, multi-device settings and robo
       habitId: deskSleep.id,
     });
     assert.equal(challenge.status, 201);
-    assert.match(challenge.value.prompt, /what is \d+ (plus|times) \d+\?/);
+    assert.match(challenge.value.prompt, /What is \d+ (plus|times) \d+\?/);
     const challengeAudio = await fetch(
       `http://127.0.0.1:3199/api/voice/challenge/${challenge.value.id}/audio`,
       { headers: { Cookie: cookie } },
@@ -185,7 +185,7 @@ test("workspace API: authentication, persistence, multi-device settings and robo
       "ID3fake",
     );
     const [, first, operation, second] = challenge.value.prompt.match(
-      /what is (\d+) (plus|times) (\d+)\?/,
+      /What is (\d+) (plus|times) (\d+)\?/,
     );
     const expected =
       operation === "plus"
@@ -208,6 +208,7 @@ test("workspace API: authentication, persistence, multi-device settings and robo
       { answer: "banana" },
     );
     assert.equal(wrongAnswer.value.correct, false);
+    assert.equal(wrongAnswer.value.logged, true);
     assert.ok(wrongAnswer.value.eventId);
     const afterVoice = (await call("/state")).value;
     assert.ok(afterVoice.events.some((event) => event.source === "voice"));
@@ -225,7 +226,7 @@ test("workspace API: authentication, persistence, multi-device settings and robo
       habitId: deskSleep.id,
     });
     const [, spokenFirst, spokenOperation, spokenSecond] =
-      spokenChallenge.value.prompt.match(/what is (\d+) (plus|times) (\d+)\?/);
+      spokenChallenge.value.prompt.match(/What is (\d+) (plus|times) (\d+)\?/);
     const spokenExpected =
       spokenOperation === "plus"
         ? Number(spokenFirst) + Number(spokenSecond)
@@ -271,6 +272,20 @@ test("workspace API: authentication, persistence, multi-device settings and robo
       (await call("/habits", "POST", { ...habit, dailyLimit: -1 })).status,
       400,
     );
+    const pausedChallenge = await call("/voice/challenge", "POST", {
+      habitId: id,
+    });
+    assert.equal(pausedChallenge.status, 201);
+    await call("/habits/" + id, "PUT", { ...habit, active: false });
+    const pausedAnswer = await call(
+      `/voice/challenge/${pausedChallenge.value.id}/answer`,
+      "POST",
+      { answer: "banana" },
+    );
+    assert.equal(pausedAnswer.status, 200);
+    assert.equal(pausedAnswer.value.correct, false);
+    assert.equal(pausedAnswer.value.logged, false);
+    await call("/habits/" + id, "PUT", { ...habit, active: true });
     const event = await call("/events", "POST", { habitId: id });
     assert.equal(event.status, 201);
     const after = (await call("/state")).value;

@@ -24,7 +24,7 @@ import {
   createChallenge,
   checkChallengeAnswer,
 } from "./domain.js";
-import { voiceConfigured, synthesize, transcribe } from "./voice.js";
+import { voiceConfigured, synthesize, transcribe, owlify } from "./voice.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dataDir = path.resolve(process.env.DATA_DIR || path.join(root, "data"));
@@ -258,7 +258,7 @@ voiceRouter.post("/speak", async (req, res, next) => {
       .status(400)
       .json({ error: "Enter text between 1 and 400 characters." });
   try {
-    const audio = await synthesize(text);
+    const audio = await synthesize(owlify(text));
     res.set("Content-Type", "audio/mpeg");
     res.set("Cache-Control", "no-store");
     res.send(audio);
@@ -289,7 +289,7 @@ voiceRouter.get("/challenge/:id/audio", async (req, res, next) => {
   if (!challenge)
     return res.status(404).json({ error: "Challenge not found." });
   try {
-    const audio = await synthesize(challenge.prompt);
+    const audio = await synthesize(owlify(challenge.prompt));
     res.set("Content-Type", "audio/mpeg");
     res.set("Cache-Control", "no-store");
     res.send(audio);
@@ -304,6 +304,7 @@ voiceRouter.post(
     const challenge = currentChallenge(req.params.id);
     if (!challenge)
       return res.status(404).json({ error: "Challenge not found." });
+    challenges.delete(req.params.id);
     try {
       const heard = Buffer.isBuffer(req.body)
         ? await transcribe(
@@ -314,24 +315,44 @@ voiceRouter.post(
           ? req.body.answer.trim()
           : "";
       const correct = checkChallengeAnswer(challenge.answer, heard);
-      challenges.delete(req.params.id);
       if (correct)
         return res.json({
           correct: true,
           heard,
           message: "Nice, you're awake. Keep going.",
         });
-      let eventId;
+      const habit = db
+        .prepare("SELECT id,active FROM habits WHERE id=?")
+        .get(challenge.habitId);
+      if (!habit || !habit.active)
+        return res.json({
+          correct: false,
+          heard,
+          expected: challenge.answer,
+          logged: false,
+          message:
+            "Wrong answer, but we couldn't log it — the habit may be paused or removed.",
+        });
       try {
-        eventId = (await logOccurrence(challenge.habitId, "voice")).id;
-      } catch {}
-      res.json({
-        correct: false,
-        heard,
-        expected: challenge.answer,
-        ...(eventId ? { eventId } : {}),
-        message: "Let's log that and take a real break.",
-      });
+        const { id: eventId } = await logOccurrence(challenge.habitId, "voice");
+        return res.json({
+          correct: false,
+          heard,
+          expected: challenge.answer,
+          logged: true,
+          eventId,
+          message: "Let's log that and take a real break.",
+        });
+      } catch {
+        return res.json({
+          correct: false,
+          heard,
+          expected: challenge.answer,
+          logged: false,
+          message:
+            "Wrong answer, but we couldn't log it — the habit may be paused or removed.",
+        });
+      }
     } catch (error) {
       next(error);
     }

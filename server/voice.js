@@ -47,10 +47,31 @@ export async function synthesize(text) {
     {
       method: "POST",
       headers: { ...voiceHeaders(), "Content-Type": "application/json" },
-      body: JSON.stringify({ text, model_id: modelId }),
+      body: JSON.stringify({
+        text,
+        model_id: modelId,
+        voice_settings: {
+          stability: 0.35,
+          similarity_boost: 0.8,
+          style: 0.6,
+          use_speaker_boost: true,
+        },
+      }),
     },
   );
   return Buffer.from(await response.arrayBuffer());
+}
+
+const OWL_OPENERS = ["Hoo-hoo!", "Hoot hoot.", "Whooo's there?", "Hoo, hoo."];
+const OWL_CLOSERS = [
+  "Wise up and rest well.",
+  "This owl is watching.",
+  "Hoot!",
+  "Whooo's got this? You do.",
+];
+export function owlify(text, rand = Math.random) {
+  const pick = (list) => list[Math.floor(rand() * list.length)];
+  return `${pick(OWL_OPENERS)} ${text.trim()} ${pick(OWL_CLOSERS)}`;
 }
 
 export async function transcribe(buffer, mimeType) {

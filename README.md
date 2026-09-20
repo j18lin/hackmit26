@@ -25,7 +25,9 @@ The server then serves the built website and API together on **http://localhost:
 Set `ELEVENLABS_API_KEY` on the server to enable voice nudges and wake-up
 checks. `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID`, and
 `ELEVENLABS_BASE_URL` are optional overrides; the base URL is useful for tests
-and proxies. Provider credentials never reach the browser.
+and proxies. Voice lines are delivered in an owl persona (hoots included);
+`ELEVENLABS_VOICE_ID` can swap in a different voice. Provider credentials never
+reach the browser.
 
 ## What works
 
