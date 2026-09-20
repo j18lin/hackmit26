@@ -360,41 +360,37 @@ test("workspace API: authentication, persistence, multi-device settings and robo
       201,
     );
     assert.equal((await call("/state")).value.events[0].source, "robot");
-    const reading = {
-      doomscrolling: true,
-      slouching: false,
-      sleeping: false,
-      drinkingWater: false,
-      tempRaw: 2560,
-    };
-    assert.equal((await call("/robot/sensors", "POST", reading)).status, 401);
+    assert.equal(
+      (await call("/robot/violations", "POST", { field: "doomscrolling" }))
+        .status,
+      401,
+    );
     assert.equal(
       (
-        await call("/robot/sensors", "POST", reading, {
-          Authorization: `Bearer ${key}`,
-        })
+        await call(
+          "/robot/violations",
+          "POST",
+          { field: "doomscrolling" },
+          { Authorization: `Bearer ${key}` },
+        )
       ).status,
       201,
     );
     assert.equal(
       (
         await call(
-          "/robot/sensors",
+          "/robot/violations",
           "POST",
-          { ...reading, tempRaw: 99999 },
-          {
-            Authorization: `Bearer ${key}`,
-          },
+          { field: "napping" },
+          { Authorization: `Bearer ${key}` },
         )
       ).status,
       400,
     );
-    const sensors = (await call("/sensors/latest")).value;
-    assert.equal(sensors.latest.doomscrolling, true);
-    assert.equal(sensors.latest.tempRaw, 2560);
-    assert.equal(sensors.latest.tempC, 20);
-    assert.ok(sensors.doomscrollingDurationMs >= 0);
-    assert.equal(sensors.sleepDurationMs, 0);
+    const violations = (await call("/violations/latest")).value;
+    assert.equal(violations.counts.doomscrolling, 1);
+    assert.equal(violations.counts.sleeping, 0);
+    assert.ok(violations.lastAt.doomscrolling);
     await call("/robot/key", "POST");
     assert.equal(
       (

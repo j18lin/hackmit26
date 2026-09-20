@@ -138,56 +138,30 @@ export function quietNow(date, settings) {
     : hour >= start || hour < end;
 }
 
-export function validateSensorReading(input) {
-  for (const key of ["doomscrolling", "slouching", "sleeping", "drinkingWater"])
-    if (typeof input[key] !== "boolean")
-      throw new Error(`${key} must be true or false.`);
-  if (
-    !Number.isInteger(input.tempRaw) ||
-    input.tempRaw < -32768 ||
-    input.tempRaw > 32767
-  )
-    throw new Error(
-      "tempRaw must be the TMP117's raw 16-bit signed register value (-32768 to 32767).",
-    );
-  return {
-    doomscrolling: input.doomscrolling,
-    slouching: input.slouching,
-    sleeping: input.sleeping,
-    drinkingWater: input.drinkingWater,
-    tempRaw: input.tempRaw,
-  };
+// The Arduino now decides on-device when a sensed habit has been violated
+// (e.g. slouching continuously past its own duration threshold) and only
+// reports the fact that it happened, not a continuous stream of booleans —
+// so the backend just counts occurrences instead of deriving streaks.
+export const violationFields = ["doomscrolling", "slouching", "sleeping", "drinkingWater"];
+
+export function validateViolation(input) {
+  if (!violationFields.includes(input.field))
+    throw new Error(`field must be one of: ${violationFields.join(", ")}.`);
+  return { field: input.field };
 }
 
-// TMP117 resolution is 0.0078125 °C per LSB of its 16-bit two's-complement register.
-export function tmp117ToCelsius(tempRaw) {
-  return tempRaw * 0.0078125;
-}
-
-// The Arduino only reports point-in-time booleans; duration is derived here
-// from how many consecutive readings (ascending by createdAt) had the field
-// on, so firmware never needs a clock or persistent timers of its own.
-export function streakDurationMs(readings, field, now = Date.now()) {
-  if (!readings.length) return 0;
-  const latest = readings[readings.length - 1];
-  if (!latest[field]) return 0;
-  let start = latest.createdAt;
-  for (let i = readings.length - 1; i >= 0 && readings[i][field]; i--)
-    start = readings[i].createdAt;
-  return now - new Date(start).getTime();
-}
-
-// Runs streakDurationMs for every thresholded field (thresholds come from
-// config/constants.yaml via server/constants.js — this module stays I/O-free
-// for easy testing) and reports whether each one has crossed its limit, so
-// the frontend can render a per-habit alert without doing any math itself.
-export function evaluateSensorThresholds(readings, thresholds, now = Date.now()) {
-  const result = {};
-  for (const [field, thresholdMs] of Object.entries(thresholds)) {
-    const durationMs = streakDurationMs(readings, field, now);
-    result[field] = { durationMs, thresholdMs, exceeded: durationMs >= thresholdMs };
+// Turns raw violation rows (already filtered to the retention window by the
+// caller) into a zero-filled per-field summary, so the frontend never has to
+// handle a missing key for a field that hasn't fired yet.
+export function summarizeViolations(rows) {
+  const counts = Object.fromEntries(violationFields.map((f) => [f, 0]));
+  const lastAt = Object.fromEntries(violationFields.map((f) => [f, null]));
+  for (const row of rows) {
+    counts[row.field] = (counts[row.field] || 0) + 1;
+    if (!lastAt[row.field] || row.createdAt > lastAt[row.field])
+      lastAt[row.field] = row.createdAt;
   }
-  return result;
+  return { counts, lastAt };
 }
 
 export function validateSubscription(subscription) {

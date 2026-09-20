@@ -11,7 +11,7 @@
     "build": "vite build",
     "start": "node --env-file-if-exists=.env server/index.js",
     "icons": "node scripts/generate-icons.js",
-    "seed:sensors": "node scripts/seed-sensor-data.js",
+    "seed:violations": "node scripts/seed-violations.js",
     "seed:habits": "node scripts/seed-habit-events.js",
     "test": "node --test tests/*.test.js",
     "format": "prettier --write src server shared tests scripts public/manifest.webmanifest public/sw.js index.html vite.config.js package.json README.md",

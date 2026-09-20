@@ -89,20 +89,20 @@ Events receive a server timestamp and `source: "robot"`. Paused/nonexistent habi
 
 ### Sensor telemetry
 
-The same robot key also authenticates raw sensor snapshots, one per detector poll:
+The same robot key also authenticates violation reports. Unlike `/api/robot/events`, these aren't tied to a specific habit row — they're one of four sensor-tracked fields, and the Arduino/inference side decides on-device when a violation happened (e.g. slouching continuously past its own duration threshold) rather than streaming raw booleans every poll:
 
 ```sh
-curl https://YOUR_HOST/api/robot/sensors \
+curl https://YOUR_HOST/api/robot/violations \
   -H "Authorization: Bearer YOUR_ROBOT_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"doomscrolling":true,"slouching":false,"sleeping":false,"drinkingWater":false,"tempRaw":2560}'
+  -d '{"field":"slouching"}'
 ```
 
-`doomscrolling`, `slouching`, `sleeping` and `drinkingWater` are point-in-time booleans; `tempRaw` is the SparkFun TMP117's raw 16-bit signed register value (firmware sends the register as-is, no conversion). The server, not the Arduino, is the source of truth for anything derived from a time series: `GET /api/sensors/latest` returns the latest snapshot (with `tempC` converted at the TMP117's 0.0078125 °C/LSB resolution) plus `doomscrollingDurationMs` and `sleepDurationMs`, each computed by walking back over the last 48 hours of readings to find how long that boolean has been continuously true. Keeping duration and unit conversion server-side means firmware only ever reports what it sees right now.
+`field` must be one of `doomscrolling`, `slouching`, `sleeping`, `drinkingWater`. Each accepted request is one violation — the server does no threshold or duration math, it just counts occurrences and prunes anything older than the retention window (`config/constants.yaml`, `violations.windowHours`, 48h by default). `GET /api/violations/latest` returns the per-field counts and last-seen timestamps over that window. Keeping the threshold decision on-device means firmware only ever reports "this just happened," and the backend stays a thin, stateless counter.
 
 ### Future work
 
-- **Arduino:** poll the detectors and the TMP117 on an interval and forward each snapshot to `/api/robot/sensors`; add confidence thresholds and debouncing before treating a boolean as reliable. Choose hardware/model after deciding which habits and sensors to detect.
+- **Arduino:** run the detectors on an interval, track how long each one stays continuously true on-device, and call `/api/robot/violations` once a field's own duration threshold is crossed; add confidence thresholds and debouncing before treating a boolean as reliable. Choose hardware/model after deciding which habits and sensors to detect.
 - Multi-user accounts, account recovery, a durable notification job queue, per-habit routing, and deployment-specific monitoring are future production work.
 
 ## API map
@@ -120,14 +120,14 @@ curl https://YOUR_HOST/api/robot/sensors \
 | `POST /api/notifications/test`                       | Send test push to enabled devices                                                  |
 | `POST /api/robot/key`                                | Generate/rotate robot bearer key                                                   |
 | `POST /api/robot/events`                             | Bearer-authenticated robot observation                                             |
-| `POST /api/robot/sensors`                            | Bearer-authenticated sensor snapshot (booleans + TMP117 raw temperature)           |
-| `GET /api/sensors/latest`                            | Latest snapshot, converted temperature, and computed doomscrolling/sleep durations |
+| `POST /api/robot/violations`                         | Bearer-authenticated violation report (`{field}`, one of the sensor-tracked habits) |
+| `GET /api/violations/latest`                         | Per-field violation counts and last-seen time over the retention window            |
 | `POST /api/voice/speak`                              | Session-authenticated ElevenLabs text-to-speech                                    |
 | `POST /api/voice/challenge`                          | Create a spoken wake-up check for an active habit                                  |
 | `GET /api/voice/challenge/:id/audio`                 | Speak a wake-up check prompt                                                       |
 | `POST /api/voice/challenge/:id/answer`               | Submit typed text or recorded audio for a wake-up check                            |
 
-All endpoints except session setup/status and robot ingestion require a session cookie. Robot keys grant event and sensor ingestion only. Subscription endpoints and private keys are never returned in workspace state.
+All endpoints except session setup/status and robot ingestion require a session cookie. Robot keys grant event and violation ingestion only. Subscription endpoints and private keys are never returned in workspace state.
 
 ## Persistence, privacy and deployment
 

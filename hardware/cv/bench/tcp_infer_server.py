@@ -20,6 +20,12 @@ instantaneous `reading` and a `violations` list (fields whose duration
 threshold was just crossed on this call, i.e. fire-once-per-streak); the
 client (see monitor_arduino.py) only POSTs the fields in `violations`.
 
+Each fired violation also directly triggers a physical reaction on this
+same board's microcontroller side (LCD eyes + servos, see
+../../owlert_robot/owlert_robot.ino) via arduino_expression.py, over the
+UNO Q's built-in Linux<->MCU serial bridge -- no round trip through the
+Mac or backend needed for the physical reaction itself, only for logging.
+
 Wire protocol (client -> server): 4-byte big-endian length, then that many
 JPEG bytes. Server -> client: 4-byte big-endian length, then that many
 bytes of UTF-8 JSON.
@@ -39,6 +45,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 from ai_edge_litert.interpreter import Interpreter
+
+from arduino_expression import send_expression
 
 MODELS_DIR = Path(__file__).resolve().parent / "models"
 
@@ -76,6 +84,16 @@ VIOLATION_DURATION_SEC = {
     "slouching": 10.0,
     "sleeping": 10.0,
     "drinkingWater": 0.0,  # momentary by nature -- report as soon as seen
+}
+
+# Which expression the robot (owlert_robot.ino, over the serial bridge --
+# see arduino_expression.py) plays when a given field's violation fires.
+# Arbitrary/placeholder mapping, easy to retune.
+VIOLATION_EXPRESSIONS = {
+    "doomscrolling": "ANGRY",
+    "slouching": "ANGRY",
+    "sleeping": "SAD",
+    "drinkingWater": "NEUTRAL",  # bottle-near-person is a good sign, not scolded
 }
 
 
@@ -278,6 +296,10 @@ def handle_connection(conn, interpreters, labels, tracker):
         "tempRaw": 2700,  # placeholder, no real temp sensor wired up yet
     }
     violations = tracker.update(reading, time.time())
+    if violations:
+        # First fired field wins if several cross their threshold on the
+        # same call -- one expression at a time, arbitrary but deterministic.
+        send_expression(VIOLATION_EXPRESSIONS[violations[0]])
 
     result = {
         "reading": reading,

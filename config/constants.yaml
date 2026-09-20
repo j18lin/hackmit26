@@ -1,21 +1,8 @@
-# Single source of truth for tunable numbers shared across the Node backend
-# (server/constants.js) and the Python CV scripts (cv/constants.py). Edit
-# values here rather than hardcoding them again in either language.
+# Single source of truth for tunable numbers shared with server/constants.js.
+# Edit values here rather than hardcoding them again elsewhere.
 
-sensors:
-  # How far back /api/sensors/latest and /api/state look for readings.
+violations:
+  # How long a violation event (Arduino already decided a habit was crossed,
+  # e.g. slouched continuously past its own on-device threshold) is kept in
+  # the violations table / counted in GET /api/violations, /api/state.
   windowHours: 48
-  # How long a boolean sensor field can stay continuously "on" before the
-  # dashboard flags it as an alert (see server/domain.js evaluateSensorThresholds).
-  thresholdMinutes:
-    slouching: 15
-    doomscrolling: 20
-    sleeping: 30
-
-posture:
-  # Minimum MoveNet keypoint confidence to trust a joint's position.
-  confThreshold: 0.3
-  # EMA smoothing factor for keypoints: lower = smoother/laggier, higher = snappier/more jitter.
-  smoothingAlpha: 0.4
-  # abs(ear-midpoint x - shoulder-midpoint x) / shoulder width, above which we flag forward-head/leaning.
-  forwardHeadThreshold: 0.35

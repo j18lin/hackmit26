@@ -18,14 +18,12 @@ import {
   dayKey,
   quietNow,
   validateSubscription,
-  validateSensorReading,
-  tmp117ToCelsius,
-  streakDurationMs,
-  evaluateSensorThresholds,
+  validateViolation,
+  summarizeViolations,
   createChallenge,
   checkChallengeAnswer,
 } from "./domain.js";
-import { sensorWindowHours, sensorThresholdsMs } from "./constants.js";
+import { violationWindowHours } from "./constants.js";
 import { voiceConfigured, synthesize, transcribe } from "./voice.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -39,9 +37,9 @@ db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;
   CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, habitId TEXT NOT NULL REFERENCES habits(id) ON DELETE CASCADE, source TEXT NOT NULL, createdAt TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS devices (id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, subscription TEXT NOT NULL, endpoint TEXT NOT NULL UNIQUE, enabled INTEGER NOT NULL DEFAULT 1, createdAt TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS notifications (id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL, sent INTEGER NOT NULL, failed INTEGER NOT NULL, reason TEXT NOT NULL, createdAt TEXT NOT NULL);
-  CREATE TABLE IF NOT EXISTS sensor_readings (id TEXT PRIMARY KEY, doomscrolling INTEGER NOT NULL, slouching INTEGER NOT NULL, sleeping INTEGER NOT NULL, drinkingWater INTEGER NOT NULL, tempRaw INTEGER NOT NULL, createdAt TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS violations (id TEXT PRIMARY KEY, field TEXT NOT NULL, createdAt TEXT NOT NULL);
   CREATE INDEX IF NOT EXISTS events_date ON events(createdAt);
-  CREATE INDEX IF NOT EXISTS sensor_readings_date ON sensor_readings(createdAt);
+  CREATE INDEX IF NOT EXISTS violations_date ON violations(createdAt);
 `);
 const get = (key) => {
   const row = db.prepare("SELECT value FROM config WHERE key=?").get(key);
@@ -202,20 +200,19 @@ function requireRobotKey(req, res, next) {
 app.post("/api/robot/events", requireRobotKey, (req, res, next) =>
   recordEvent(req, res, next, "robot"),
 );
-app.post("/api/robot/sensors", requireRobotKey, (req, res, next) => {
+// The Arduino decides on-device when a sensed habit crosses its own
+// duration threshold and posts one violation per crossing — this endpoint
+// is intentionally just "state += 1", no snapshot payload to validate
+// beyond which field fired.
+app.post("/api/robot/violations", requireRobotKey, (req, res, next) => {
   try {
-    const reading = validateSensorReading(req.body);
+    const { field } = validateViolation(req.body);
     const id = randomUUID();
     const createdAt = new Date().toISOString();
-    db.prepare("INSERT INTO sensor_readings VALUES (?,?,?,?,?,?,?)").run(
-      id,
-      Number(reading.doomscrolling),
-      Number(reading.slouching),
-      Number(reading.sleeping),
-      Number(reading.drinkingWater),
-      reading.tempRaw,
-      createdAt,
-    );
+    db.prepare(
+      "DELETE FROM violations WHERE createdAt<?",
+    ).run(new Date(Date.now() - violationWindowHours * 3600000).toISOString());
+    db.prepare("INSERT INTO violations VALUES (?,?,?)").run(id, field, createdAt);
     set("robotLastSeen", createdAt);
     res.status(201).json({ id });
   } catch (error) {
@@ -227,27 +224,14 @@ app.use("/api", (req, res, next) =>
     ? next()
     : res.status(401).json({ error: "Sign in to your workspace." }),
 );
-function sensorSummary() {
-  const readings = db
-    .prepare(
-      "SELECT * FROM sensor_readings WHERE createdAt>=? ORDER BY createdAt ASC",
-    )
-    .all(new Date(Date.now() - sensorWindowHours * 3600000).toISOString())
-    .map((r) => ({
-      ...r,
-      doomscrolling: Boolean(r.doomscrolling),
-      slouching: Boolean(r.slouching),
-      sleeping: Boolean(r.sleeping),
-      drinkingWater: Boolean(r.drinkingWater),
-    }));
-  const latest = readings[readings.length - 1] || null;
-  return {
-    latest: latest && { ...latest, tempC: tmp117ToCelsius(latest.tempRaw) },
-    doomscrollingDurationMs: streakDurationMs(readings, "doomscrolling"),
-    sleepDurationMs: streakDurationMs(readings, "sleeping"),
-    slouchingDurationMs: streakDurationMs(readings, "slouching"),
-    alerts: evaluateSensorThresholds(readings, sensorThresholdsMs),
-  };
+function violationSummary() {
+  const cutoff = new Date(
+    Date.now() - violationWindowHours * 3600000,
+  ).toISOString();
+  const rows = db
+    .prepare("SELECT field, createdAt FROM violations WHERE createdAt>=?")
+    .all(cutoff);
+  return { windowHours: violationWindowHours, ...summarizeViolations(rows) };
 }
 function requireVoice(req, res, next) {
   if (!voiceConfigured())
@@ -387,13 +371,13 @@ app.get("/api/state", (req, res) => {
       configured: Boolean(get("robotKeyHash")),
       lastSeen: get("robotLastSeen"),
     },
-    sensors: sensorSummary(),
+    violations: violationSummary(),
     voice: { configured: voiceConfigured() },
     publicKey: vapid.publicKey,
   });
 });
-app.get("/api/sensors/latest", (req, res) => {
-  res.json(sensorSummary());
+app.get("/api/violations/latest", (req, res) => {
+  res.json(violationSummary());
 });
 app.post("/api/habits", (req, res) => {
   const h = validateHabit(req.body);

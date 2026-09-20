@@ -140,14 +140,6 @@ function relative(date) {
         ? `${Math.floor(min / 60)}h ago`
         : `${Math.floor(min / 1440)}d ago`;
 }
-function formatDuration(ms) {
-  const min = Math.floor(ms / 60000);
-  if (min < 1) return "under a minute";
-  if (min < 60) return `${min}m`;
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return m ? `${h}h ${m}m` : `${h}h`;
-}
 const SENSOR_ALERT_FIELDS = [
   { field: "slouching", label: "Slouching", icon: Activity },
   { field: "doomscrolling", label: "Doom scrolling", icon: Monitor },
@@ -1274,40 +1266,34 @@ function App() {
               <section className="panel">
                 <div className="panel-heading">
                   <div>
-                    <h2>Live posture from your sensors</h2>
+                    <h2>Sensor-detected violations</h2>
                     <p>
-                      Computed from the last 48 hours of robot sensor
-                      readings stored in the database.
+                      Your robot decides on-device when a habit is violated
+                      and reports it once. Counts below are from the last{" "}
+                      {state.violations?.windowHours ?? 48} hours.
                     </p>
                   </div>
                   <span className="icon-tile posture">
                     <Activity />
                   </span>
                 </div>
-                {state.sensors?.latest ? (
-                  SENSOR_ALERT_FIELDS.map(({ field, label, icon: Icon }) => {
-                    const alert = state.sensors.alerts?.[field];
-                    if (!alert) return null;
-                    const active = alert.durationMs > 0;
-                    return (
-                      <div className="roadmap-row" key={field}>
-                        <Icon size={18} />
-                        <span>
-                          {active
-                            ? `${label} for ${formatDuration(alert.durationMs)} (limit ${formatDuration(alert.thresholdMs)})`
-                            : `No ${label.toLowerCase()} detected`}
-                        </span>
-                        <span
-                          className={`pill ${alert.exceeded ? "amber" : active ? "neutral" : "green"}`}
-                        >
-                          {alert.exceeded ? "Over limit" : active ? "Watching" : "Good"}
-                        </span>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <p>No sensor readings yet. Connect your robot to see this update live.</p>
-                )}
+                {SENSOR_ALERT_FIELDS.map(({ field, label, icon: Icon }) => {
+                  const count = state.violations?.counts?.[field] ?? 0;
+                  const lastAt = state.violations?.lastAt?.[field];
+                  return (
+                    <div className="roadmap-row" key={field}>
+                      <Icon size={18} />
+                      <span>
+                        {count > 0
+                          ? `${label}: ${count} time${count === 1 ? "" : "s"}, last ${relative(lastAt)}`
+                          : `No ${label.toLowerCase()} violations`}
+                      </span>
+                      <span className={`pill ${count > 0 ? "amber" : "green"}`}>
+                        {count > 0 ? "Flagged" : "Good"}
+                      </span>
+                    </div>
+                  );
+                })}
               </section>
             </>
           )}

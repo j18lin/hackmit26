@@ -5,10 +5,8 @@ import {
   quietNow,
   dayKey,
   validateSubscription,
-  validateSensorReading,
-  tmp117ToCelsius,
-  streakDurationMs,
-  evaluateSensorThresholds,
+  validateViolation,
+  summarizeViolations,
   createChallenge,
   parseSpokenNumber,
   checkChallengeAnswer,
@@ -90,59 +88,26 @@ test("push registration blocks private-network and untrusted endpoints", () => {
     keys.auth,
   );
 });
-const reading = {
-  doomscrolling: true,
-  slouching: false,
-  sleeping: false,
-  drinkingWater: false,
-  tempRaw: 2560,
-};
-test("sensor reading validation requires booleans and a 16-bit signed tempRaw", () => {
-  assert.deepEqual(validateSensorReading(reading), reading);
-  for (const update of [
-    { doomscrolling: "yes" },
-    { tempRaw: 1.5 },
-    { tempRaw: 32768 },
-    { tempRaw: -32769 },
-  ])
-    assert.throws(() => validateSensorReading({ ...reading, ...update }));
+test("violation validation only accepts known sensor-tracked fields", () => {
+  assert.deepEqual(validateViolation({ field: "slouching" }), {
+    field: "slouching",
+  });
+  for (const field of ["napping", "", undefined, 123])
+    assert.throws(() => validateViolation({ field }));
 });
-test("TMP117 raw register converts at 0.0078125 °C per LSB", () => {
-  assert.equal(tmp117ToCelsius(2560), 20);
-  assert.equal(tmp117ToCelsius(-2560), -20);
-  assert.equal(tmp117ToCelsius(0), 0);
-});
-test("streak duration sums only the unbroken run of true readings up to now", () => {
-  const base = Date.parse("2026-09-19T00:00:00Z");
-  const readings = [
-    { createdAt: new Date(base).toISOString(), sleeping: false },
-    { createdAt: new Date(base + 60000).toISOString(), sleeping: true },
-    { createdAt: new Date(base + 120000).toISOString(), sleeping: true },
-    { createdAt: new Date(base + 180000).toISOString(), sleeping: true },
+test("violation summary counts occurrences per field and zero-fills the rest", () => {
+  const rows = [
+    { field: "slouching", createdAt: "2026-09-19T00:10:00.000Z" },
+    { field: "slouching", createdAt: "2026-09-19T00:20:00.000Z" },
+    { field: "doomscrolling", createdAt: "2026-09-19T00:05:00.000Z" },
   ];
-  assert.equal(
-    streakDurationMs(readings, "sleeping", base + 300000),
-    300000 - 60000,
-  );
-  assert.equal(streakDurationMs(readings, "doomscrolling", base + 300000), 0);
-  assert.equal(streakDurationMs([], "sleeping"), 0);
-});
-test("sensor thresholds flag only fields whose streak has crossed their limit", () => {
-  const base = Date.parse("2026-09-19T00:00:00Z");
-  const readings = [
-    { createdAt: new Date(base).toISOString(), slouching: true, doomscrolling: false },
-    { createdAt: new Date(base + 600000).toISOString(), slouching: true, doomscrolling: false },
-  ];
-  const now = base + 20 * 60000; // 20 minutes after the streak started
-  const result = evaluateSensorThresholds(
-    readings,
-    { slouching: 15 * 60000, doomscrolling: 15 * 60000 },
-    now,
-  );
-  assert.equal(result.slouching.durationMs, 20 * 60000);
-  assert.equal(result.slouching.exceeded, true);
-  assert.equal(result.doomscrolling.durationMs, 0);
-  assert.equal(result.doomscrolling.exceeded, false);
+  const { counts, lastAt } = summarizeViolations(rows);
+  assert.equal(counts.slouching, 2);
+  assert.equal(counts.doomscrolling, 1);
+  assert.equal(counts.sleeping, 0);
+  assert.equal(counts.drinkingWater, 0);
+  assert.equal(lastAt.slouching, "2026-09-19T00:20:00.000Z");
+  assert.equal(lastAt.sleeping, null);
 });
 test("voice challenges produce solvable prompts", () => {
   const challenge = createChallenge(() => 0);

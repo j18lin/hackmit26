@@ -3,7 +3,8 @@
 // move for real (they're derived entirely from state.events + state.habits
 // in src/main.jsx, bucketed by calendar day in the account's timezone via
 // dayKey — see server/domain.js). Safe to re-run against an empty events
-// table; it does not touch habits or sensor_readings.
+// table; it only reads habits (doesn't modify them) and never touches the
+// separate violations table.
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import path from "node:path";

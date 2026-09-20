@@ -52,9 +52,10 @@ void setNeutralExpression() {
   lcd.setCursor(13, 1); lcd.write(255);
   lcd.setCursor(14, 1); lcd.write(3);
 
-  servo1.write(90);
-  servo2.write(90);
-  servo3.write(90);
+  // servo movement disabled for now -- see setup()
+  // servo1.write(90);
+  // servo2.write(90);
+  // servo3.write(90);
 }
 
 void setAngryExpression() {
@@ -83,9 +84,10 @@ void setAngryExpression() {
   lcd.setCursor(13, 1); lcd.write(255);
   lcd.setCursor(14, 1); lcd.write(7);
 
-  servo1.write(20);
-  servo2.write(160);
-  servo3.write(90);
+  // servo movement disabled for now -- see setup()
+  // servo1.write(20);
+  // servo2.write(160);
+  // servo3.write(90);
 }
 
 void setSadExpression() {
@@ -114,9 +116,10 @@ void setSadExpression() {
   lcd.setCursor(13, 1); lcd.write(255);
   lcd.setCursor(14, 1); lcd.write(7);
 
-  servo1.write(150);
-  servo2.write(30);
-  servo3.write(45);
+  // servo movement disabled for now -- see setup()
+  // servo1.write(150);
+  // servo2.write(30);
+  // servo3.write(45);
 }
 
 void blinkEyes() {
@@ -136,31 +139,54 @@ void blinkEyes() {
   delay(200);
 }
 
+// Driven by the Linux side over the Arduino UNO Q's built-in Linux<->MCU
+// serial bridge (/dev/ttyGS0 on the Linux side -- see
+// hardware/cv/bench/arduino_expression.py), instead of the old fixed
+// neutral/angry/sad demo loop. One command per line, case-insensitive:
+//   NEUTRAL | ANGRY | SAD
+// Unknown/partial lines are ignored. Starts neutral so the robot isn't
+// stuck blank before the first command arrives.
+String serialLine;
+
+void handleCommand(const String &command) {
+  if (command == "ANGRY") {
+    setAngryExpression();
+  } else if (command == "SAD") {
+    setSadExpression();
+  } else if (command == "NEUTRAL") {
+    setNeutralExpression();
+  }
+  // unrecognized commands are ignored rather than erroring, so a stray
+  // partial line from the bridge can't wedge the expression state
+}
+
 void setup() {
   Wire.begin();
   lcd.begin(16, 2);
   lcd.backlight();
   lcd.clear();
 
-  // Servos assigned to pins 0, 1, and 2
-  servo1.attach(0);
-  servo2.attach(1);
-  servo3.attach(2);
+  // Servo movement disabled for now -- attach calls commented out along
+  // with the .write() calls in the expression functions above, so the
+  // servos stay untouched/unpowered-by-this-sketch.
+  // servo1.attach(0);
+  // servo2.attach(1);
+  // servo3.attach(2);
+
+  Serial.begin(9600);
+  setNeutralExpression();
 }
 
 void loop() {
-  // 1. Neutral
-  setNeutralExpression();
-  delay(3000);
-  blinkEyes();
-
-  // 2. Angry
-  setAngryExpression();
-  delay(3000);
-  blinkEyes();
-
-  // 3. Sad
-  setSadExpression();
-  delay(3000);
-  blinkEyes();
+  while (Serial.available() > 0) {
+    char c = Serial.read();
+    if (c == '\n') {
+      serialLine.trim();
+      serialLine.toUpperCase();
+      if (serialLine.length() > 0) handleCommand(serialLine);
+      serialLine = "";
+    } else if (c != '\r') {
+      serialLine += c;
+    }
+  }
 }
