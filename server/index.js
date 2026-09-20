@@ -13,6 +13,7 @@ import { mkdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { habitPresets } from "../shared/habit-presets.js";
+import { migrateFocusedHabits } from "./habit-migration.js";
 import {
   validateHabit,
   dayKey,
@@ -41,6 +42,7 @@ db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;
   CREATE INDEX IF NOT EXISTS events_date ON events(createdAt);
   CREATE INDEX IF NOT EXISTS violations_date ON violations(createdAt);
 `);
+migrateFocusedHabits(db);
 const get = (key) => {
   const row = db.prepare("SELECT value FROM config WHERE key=?").get(key);
   return row ? JSON.parse(row.value) : null;
@@ -159,7 +161,9 @@ app.post("/api/session", authLimit, (req, res) => {
       notifications: true,
     });
     for (const preset of habitPresets)
-      db.prepare("INSERT INTO habits VALUES (?,?,?,?,?,?,1,?,?)").run(
+      db.prepare(
+        "INSERT INTO habits (id,name,description,category,dailyLimit,reminderMinutes,active,nextDue,createdAt) VALUES (?,?,?,?,?,?,1,?,?)",
+      ).run(
         randomUUID(),
         preset.name,
         preset.description,
@@ -169,6 +173,7 @@ app.post("/api/session", authLimit, (req, res) => {
         Date.now(),
         new Date().toISOString(),
       );
+    set("focusedHabitsV1", true);
   } else {
     const candidate = scryptSync(password, account.salt, 64);
     if (!timingSafeEqual(candidate, Buffer.from(account.password, "hex")))
@@ -209,10 +214,14 @@ app.post("/api/robot/violations", requireRobotKey, (req, res, next) => {
     const { field } = validateViolation(req.body);
     const id = randomUUID();
     const createdAt = new Date().toISOString();
-    db.prepare(
-      "DELETE FROM violations WHERE createdAt<?",
-    ).run(new Date(Date.now() - violationWindowHours * 3600000).toISOString());
-    db.prepare("INSERT INTO violations VALUES (?,?,?)").run(id, field, createdAt);
+    db.prepare("DELETE FROM violations WHERE createdAt<?").run(
+      new Date(Date.now() - violationWindowHours * 3600000).toISOString(),
+    );
+    db.prepare("INSERT INTO violations VALUES (?,?,?)").run(
+      id,
+      field,
+      createdAt,
+    );
     set("robotLastSeen", createdAt);
     res.status(201).json({ id });
   } catch (error) {
@@ -276,7 +285,7 @@ voiceRouter.post("/speak", async (req, res, next) => {
 });
 voiceRouter.post("/challenge", async (req, res, next) => {
   const habit = db
-    .prepare("SELECT id,active FROM habits WHERE id=?")
+    .prepare("SELECT id,active FROM habits WHERE id=? AND archived=0")
     .get(String(req.body?.habitId || ""));
   if (!habit || !habit.active)
     return res.status(400).json({ error: "Choose an active habit." });
@@ -351,12 +360,12 @@ app.get("/api/state", (req, res) => {
     name: get("account").name,
     settings: get("settings"),
     habits: db
-      .prepare("SELECT * FROM habits ORDER BY createdAt")
+      .prepare("SELECT * FROM habits WHERE archived=0 ORDER BY createdAt")
       .all()
       .map((h) => ({ ...h, active: Boolean(h.active) })),
     events: db
       .prepare(
-        "SELECT * FROM events WHERE createdAt>=? ORDER BY createdAt DESC",
+        "SELECT events.* FROM events JOIN habits ON habits.id=events.habitId WHERE habits.archived=0 AND events.createdAt>=? ORDER BY events.createdAt DESC",
       )
       .all(new Date(Date.now() - 31 * 86400000).toISOString()),
     devices: db
@@ -382,7 +391,9 @@ app.get("/api/violations/latest", (req, res) => {
 app.post("/api/habits", (req, res) => {
   const h = validateHabit(req.body);
   const id = randomUUID();
-  db.prepare("INSERT INTO habits VALUES (?,?,?,?,?,?,?,?,?)").run(
+  db.prepare(
+    "INSERT INTO habits (id,name,description,category,dailyLimit,reminderMinutes,active,nextDue,createdAt) VALUES (?,?,?,?,?,?,?,?,?)",
+  ).run(
     id,
     h.name,
     h.description,
@@ -399,7 +410,7 @@ app.put("/api/habits/:id", (req, res) => {
   const h = validateHabit(req.body);
   const result = db
     .prepare(
-      "UPDATE habits SET name=?,description=?,category=?,dailyLimit=?,reminderMinutes=?,active=?,nextDue=? WHERE id=?",
+      "UPDATE habits SET name=?,description=?,category=?,dailyLimit=?,reminderMinutes=?,active=?,nextDue=? WHERE id=? AND archived=0",
     )
     .run(
       h.name,
@@ -421,7 +432,7 @@ app.delete("/api/habits/:id", (req, res) => {
 });
 async function logOccurrence(habitId, source = "manual") {
   const habit = db
-    .prepare("SELECT * FROM habits WHERE id=?")
+    .prepare("SELECT * FROM habits WHERE id=? AND archived=0")
     .get(String(habitId || ""));
   if (!habit || !habit.active)
     throw Object.assign(new Error("Choose an active habit."), { status: 400 });
@@ -612,7 +623,7 @@ const timer = setInterval(async () => {
     if (!settings.notifications || quietNow(new Date(), settings)) return;
     const due = db
       .prepare(
-        "SELECT * FROM habits WHERE active=1 AND reminderMinutes>0 AND nextDue<=?",
+        "SELECT * FROM habits WHERE archived=0 AND active=1 AND reminderMinutes>0 AND nextDue<=?",
       )
       .all(Date.now());
     for (const habit of due) {

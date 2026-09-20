@@ -14,27 +14,40 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dataDir = path.resolve(process.env.DATA_DIR || path.join(root, "data"));
 const db = new DatabaseSync(path.join(dataDir, "nudge.sqlite"));
 
-const settingsRow = db.prepare("SELECT value FROM config WHERE key='settings'").get();
-const timezone = settingsRow ? JSON.parse(settingsRow.value).timezone : "America/New_York";
+const settingsRow = db
+  .prepare("SELECT value FROM config WHERE key='settings'")
+  .get();
+const timezone = settingsRow
+  ? JSON.parse(settingsRow.value).timezone
+  : "America/New_York";
 
 // One habit row per preset name, if duplicates exist keep the earliest
 // (the dashboard shows every habit row; seeding events onto every duplicate
 // would just be redundant, not more "real").
 const habitRows = db
-  .prepare("SELECT id,name,dailyLimit,createdAt FROM habits ORDER BY createdAt ASC")
+  .prepare(
+    "SELECT id,name,dailyLimit,createdAt FROM habits WHERE archived=0 ORDER BY createdAt ASC",
+  )
   .all();
 const habitByName = new Map();
-for (const h of habitRows) if (!habitByName.has(h.name)) habitByName.set(h.name, h);
+for (const h of habitRows)
+  if (!habitByName.has(h.name)) habitByName.set(h.name, h);
 
 const CONFIGS = [
-  { name: "Doom scrolling", source: "robot", trend: "worsening", meanStart: 2, meanEnd: 4.5 },
-  { name: "Slouching", source: "robot", trend: "worsening", meanStart: 1.5, meanEnd: 5 },
-  { name: "Sitting too long", source: "manual", trend: "flat", meanStart: 2, meanEnd: 2.5 },
-  { name: "Falling asleep at desk", source: "manual", trend: "flat", meanStart: 0.4, meanEnd: 0.3 },
-  { name: "Skipping water breaks", source: "manual", trend: "improving", meanStart: 2.5, meanEnd: 0.4 },
-  { name: "Staying up late", source: "manual", trend: "improving", meanStart: 0.8, meanEnd: 0.2 },
-  { name: "Smoking", source: "manual", trend: "improving", meanStart: 0.6, meanEnd: 0.05 },
-  { name: "Poor lifting habits", source: "manual", trend: "flat", meanStart: 0.3, meanEnd: 0.2 },
+  {
+    name: "Doomscrolling",
+    source: "robot",
+    trend: "worsening",
+    meanStart: 2,
+    meanEnd: 4.5,
+  },
+  {
+    name: "Drinking water",
+    source: "manual",
+    trend: "improving",
+    meanStart: 2.5,
+    meanEnd: 0.4,
+  },
 ];
 
 const DAYS = 28;
@@ -81,22 +94,38 @@ for (const cfg of CONFIGS) {
     let count = Math.max(0, Math.round(mean + (Math.random() - 0.5) * 1.6));
     // Make the last two days unambiguous so the demo is legible at a glance.
     if (daysAgo <= 1) {
-      if (cfg.trend === "worsening") count = habit.dailyLimit + 1 + Math.floor(Math.random() * 3);
-      else if (cfg.trend === "improving") count = Math.floor(Math.random() * Math.max(1, Math.ceil(habit.dailyLimit / 2)));
+      if (cfg.trend === "worsening")
+        count = habit.dailyLimit + 1 + Math.floor(Math.random() * 3);
+      else if (cfg.trend === "improving")
+        count = Math.floor(
+          Math.random() * Math.max(1, Math.ceil(habit.dailyLimit / 2)),
+        );
     }
     if (count >= habit.dailyLimit) daysOverLimit++;
     for (let i = 0; i < count; i++) {
       const hour = 8 + Math.floor(Math.random() * 15); // 8am - 10pm local
       const minute = Math.floor(Math.random() * 60);
-      insert.run(randomUUID(), habit.id, cfg.source, localTimestamp(daysAgo, hour, minute));
+      insert.run(
+        randomUUID(),
+        habit.id,
+        cfg.source,
+        localTimestamp(daysAgo, hour, minute),
+      );
       totalEvents++;
     }
   }
-  summary.push({ habit: cfg.name, dailyLimit: habit.dailyLimit, totalEvents, daysOverLimit });
+  summary.push({
+    habit: cfg.name,
+    dailyLimit: habit.dailyLimit,
+    totalEvents,
+    daysOverLimit,
+  });
 }
 db.exec("COMMIT");
 
-console.log(`Seeded events for ${summary.length} habits over the last ${DAYS} days (timezone: ${timezone}):`);
+console.log(
+  `Seeded events for ${summary.length} habits over the last ${DAYS} days (timezone: ${timezone}):`,
+);
 for (const s of summary)
   console.log(
     `  ${s.habit.padEnd(24)} limit=${s.dailyLimit}  events=${s.totalEvents}  days-over-limit=${s.daysOverLimit}/${DAYS}`,

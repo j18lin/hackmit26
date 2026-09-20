@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-Open **http://localhost:5173**. Create the workspace with your name and a passphrase of at least 10 characters. Save that passphrase: it signs into the same workspace on other devices. The first setup creates eight editable preset habits; no check-in history or device connections are fabricated. This is a single personal/shared workspace, not a multi-user SaaS.
+Open **http://localhost:5173**. Create the workspace with your name and a passphrase of at least 10 characters. Save that passphrase: it signs into the same workspace on other devices. The first setup creates two editable preset habits: Doomscrolling and Drinking water. No check-in history or device connections are fabricated. This is a single personal/shared workspace, not a multi-user SaaS.
 
 The frontend runs on port 5173 and proxies `/api` to port 3001. For production:
 
@@ -42,18 +42,12 @@ and proxies. Provider credentials never reach the browser.
 
 ## Habit presets
 
-Choose a preset from **Add habit → Start with a preset** or the library on **My habits**. Presets fill in the name, category, reminder message, and an editable daily threshold. Scheduled nudges start off. New workspaces start with all eight; existing habits and history are preserved, and already-added preset names are marked in the picker.
+Choose a preset from **Add habit → Start with a preset** or the library on **My habits**. Presets fill in the name, category, reminder message, and an editable daily threshold. Scheduled nudges start off. New workspaces start with both presets; already-added preset names are marked in the picker.
 
-- Doom scrolling
-- Slouching / bad posture
-- Sitting too long
-- Falling asleep at desk
-- Skipping water breaks
-- Staying up late
-- Smoking
-- Poor lifting habits
+- Doomscrolling
+- Drinking water
 
-All logs currently count unwanted occurrences. Water means **missed water breaks**, and sleep time means **staying up past your intended bedtime**; these are not water-volume or sleep-duration measurements. Thresholds are reminder settings, not recommended health targets. The desk-sleep preset offers an optional spoken math check through ElevenLabs when the server has an API key; voice checks are not a substitute for rest.
+Logs count unwanted scrolling sessions and **missed water breaks**, not glasses of water consumed. Thresholds are personal reminder settings, not recommended health targets. Existing installations receive a one-time migration that archives the retired starter habits, preserving their rows and history in SQLite while excluding them from tracking, reminders, and dashboard totals. Existing doomscrolling/water IDs and settings are retained; custom habits are left alone. Archived rows can be recovered by clearing their `archived` flag; the migration will not archive them again. Custom habits and optional ElevenLabs voice checks remain supported.
 
 ## Phone + laptop notifications
 
@@ -107,25 +101,25 @@ curl https://YOUR_HOST/api/robot/violations \
 
 ## API map
 
-| Endpoint                                             | Purpose                                                                            |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `GET /api/session`                                   | First-run / signed-in state                                                        |
-| `POST /api/session`                                  | Create first workspace or sign in                                                  |
-| `DELETE /api/session`                                | Sign out this session                                                              |
-| `GET /api/state`                                     | Habits, 31 days of events, devices, settings, latest 50 notification results       |
-| `POST /api/habits`, `PUT/DELETE /api/habits/:id`     | Manage habits                                                                      |
-| `POST /api/events`, `DELETE /api/events/:id`         | Log/undo manual observations                                                       |
-| `PUT /api/settings`                                  | Timezone, quiet hours and automatic nudges                                         |
-| `POST /api/devices`, `PATCH/DELETE /api/devices/:id` | Register, pause or disconnect push devices                                         |
-| `POST /api/notifications/test`                       | Send test push to enabled devices                                                  |
-| `POST /api/robot/key`                                | Generate/rotate robot bearer key                                                   |
-| `POST /api/robot/events`                             | Bearer-authenticated robot observation                                             |
+| Endpoint                                             | Purpose                                                                             |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `GET /api/session`                                   | First-run / signed-in state                                                         |
+| `POST /api/session`                                  | Create first workspace or sign in                                                   |
+| `DELETE /api/session`                                | Sign out this session                                                               |
+| `GET /api/state`                                     | Habits, 31 days of events, devices, settings, latest 50 notification results        |
+| `POST /api/habits`, `PUT/DELETE /api/habits/:id`     | Manage habits                                                                       |
+| `POST /api/events`, `DELETE /api/events/:id`         | Log/undo manual observations                                                        |
+| `PUT /api/settings`                                  | Timezone, quiet hours and automatic nudges                                          |
+| `POST /api/devices`, `PATCH/DELETE /api/devices/:id` | Register, pause or disconnect push devices                                          |
+| `POST /api/notifications/test`                       | Send test push to enabled devices                                                   |
+| `POST /api/robot/key`                                | Generate/rotate robot bearer key                                                    |
+| `POST /api/robot/events`                             | Bearer-authenticated robot observation                                              |
 | `POST /api/robot/violations`                         | Bearer-authenticated violation report (`{field}`, one of the sensor-tracked habits) |
-| `GET /api/violations/latest`                         | Per-field violation counts and last-seen time over the retention window            |
-| `POST /api/voice/speak`                              | Session-authenticated ElevenLabs text-to-speech                                    |
-| `POST /api/voice/challenge`                          | Create a spoken wake-up check for an active habit                                  |
-| `GET /api/voice/challenge/:id/audio`                 | Speak a wake-up check prompt                                                       |
-| `POST /api/voice/challenge/:id/answer`               | Submit typed text or recorded audio for a wake-up check                            |
+| `GET /api/violations/latest`                         | Per-field violation counts and last-seen time over the retention window             |
+| `POST /api/voice/speak`                              | Session-authenticated ElevenLabs text-to-speech                                     |
+| `POST /api/voice/challenge`                          | Create a spoken wake-up check for an active habit                                   |
+| `GET /api/voice/challenge/:id/audio`                 | Speak a wake-up check prompt                                                        |
+| `POST /api/voice/challenge/:id/answer`               | Submit typed text or recorded audio for a wake-up check                             |
 
 All endpoints except session setup/status and robot ingestion require a session cookie. Robot keys grant event and violation ingestion only. Subscription endpoints and private keys are never returned in workspace state.
 

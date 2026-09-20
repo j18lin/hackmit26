@@ -17,7 +17,7 @@ export function ThemeProvider({ children }) {
   useLayoutEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.querySelector('meta[name="theme-color"]').content =
-      theme === "dark" ? "#19181d" : "#f6f5f2";
+      theme === "dark" ? "#12271e" : "#f3eddf";
   }, [theme]);
   useEffect(() => {
     const sync = (event) => {
@@ -77,7 +77,7 @@ export function ThemeSettings() {
         >
           <Sun size={19} />
           <span>
-            Light<small>Warm, light surfaces</small>
+            Light<small>Cream & forest green</small>
           </span>
         </button>
         <button
@@ -88,7 +88,7 @@ export function ThemeSettings() {
         >
           <Moon size={19} />
           <span>
-            Dark<small>Soft charcoal surfaces</small>
+            Dark<small>Forest green & copper</small>
           </span>
         </button>
       </div>

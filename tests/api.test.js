@@ -6,6 +6,7 @@ import { createServer } from "node:http";
 import path from "node:path";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
+import { DatabaseSync } from "node:sqlite";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 mkdirSync(path.join(root, "work"), { recursive: true });
 const numberWords = [
@@ -147,9 +148,54 @@ test("workspace API: authentication, persistence, multi-device settings and robo
     assert.equal(signedIn.status, 200);
     assert.match(signedIn.setCookie, /; Secure/i);
     const initial = (await call("/state")).value;
-    assert.equal(initial.habits.length, 8);
+    assert.equal(initial.habits.length, 2);
+    assert.deepEqual(initial.habits.map((h) => h.name).sort(), [
+      "Doomscrolling",
+      "Drinking water",
+    ]);
     assert.equal(initial.events.length, 0);
     assert.equal(initial.voice.configured, true);
+    const stored = new DatabaseSync(path.join(dir, "nudge.sqlite"));
+    try {
+      assert.equal(
+        stored
+          .prepare("SELECT value FROM config WHERE key='focusedHabitsV1'")
+          .get().value,
+        "true",
+        "fresh setup must not re-add intentionally removed presets on restart",
+      );
+      stored
+        .prepare(
+          "INSERT INTO habits (id,name,description,category,dailyLimit,reminderMinutes,active,nextDue,createdAt,archived) VALUES ('retired','Nail biting','','mindfulness',3,0,1,0,?,1)",
+        )
+        .run(new Date().toISOString());
+      stored
+        .prepare(
+          "INSERT INTO events VALUES ('retired-event','retired','manual',?)",
+        )
+        .run(new Date().toISOString());
+      const focused = (await call("/state")).value;
+      assert.equal(focused.habits.length, 2);
+      assert.equal(focused.events.length, 0);
+      assert.equal(
+        (await call("/events", "POST", { habitId: "retired" })).status,
+        400,
+      );
+      assert.equal(
+        (await call("/voice/challenge", "POST", { habitId: "retired" })).status,
+        400,
+      );
+      assert.equal(
+        stored
+          .prepare(
+            "SELECT COUNT(*) AS count FROM events WHERE habitId='retired'",
+          )
+          .get().count,
+        1,
+      );
+    } finally {
+      stored.close();
+    }
     const spoken = await fetch("http://127.0.0.1:3199/api/voice/speak", {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: cookie },
@@ -166,9 +212,17 @@ test("workspace API: authentication, persistence, multi-device settings and robo
       ).status,
       400,
     );
-    const deskSleep = initial.habits.find(
-      (habit) => habit.name === "Falling asleep at desk",
-    );
+    // Voice checks remain supported for custom habits, not a default sleep card.
+    const deskSleep = (
+      await call("/habits", "POST", {
+        name: "Voice check test",
+        category: "sleep",
+        description: "Take a break",
+        dailyLimit: 1,
+        reminderMinutes: 0,
+        active: true,
+      })
+    ).value;
     const challenge = await call("/voice/challenge", "POST", {
       habitId: deskSleep.id,
     });
@@ -417,7 +471,7 @@ test("workspace API: authentication, persistence, multi-device settings and robo
       200,
     );
     assert.notEqual(cookie, firstCookie);
-    assert.equal((await call("/state")).value.habits.length, 9);
+    assert.equal((await call("/state")).value.habits.length, 4);
     await call("/session", "DELETE");
     assert.equal((await call("/state")).status, 401);
     cookie = firstCookie;

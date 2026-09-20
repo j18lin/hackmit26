@@ -1,40 +1,47 @@
 /* Dashboard presentation. Owl artwork and the welcome animation live in owl-theme. */
 :root {
-  --bg: #19181d;
-  --surface: #222127;
-  --ink: #f2f0f5;
-  --muted: #b5b0bf;
-  --soft: #b5b0bf;
-  --border: #3b3742;
-  --purple: #bea4e3;
-  --green: #bea4e3;
-  --accent-fill: #77549f;
-  --accent-soft: #342c40;
-  --quiet: #29272e;
-  --success: #98d6b5;
-  --success-bg: #24382e;
-  --warning: #f2c580;
-  --warning-bg: #443522;
+  --bg: #12271e;
+  --surface: #1c3529;
+  --ink: #f4ecd8;
+  --muted: #bdc7b2;
+  --soft: var(--muted);
+  --border: #405344;
+  /* Legacy accent aliases keep the base styles in sync with this palette. */
+  --purple: #edb27d;
+  --green: #edb27d;
+  --accent-fill: #d99a64;
+  --button-ink: #142c21;
+  --accent-soft: #493b28;
+  --quiet: #294235;
+  --success: #b7cf9b;
+  --success-bg: #2b4634;
+  --warning: #efbb80;
+  --warning-bg: #4b3826;
+  --error: #f1b19a;
+  --error-bg: #492e26;
   background: var(--bg);
   color: var(--ink);
 }
 
 :root[data-theme="light"] {
-  --bg: #f6f5f2;
-  --surface: #ffffff;
-  --ink: #28252d;
-  --muted: #6d6874;
-  --soft: #6d6874;
-  --border: #dedbe2;
-  --purple: #704c96;
-  --green: #704c96;
-  --accent-fill: #704c96;
-  --accent-soft: #eee8f4;
-  --quiet: #f1efed;
-  --success: #286346;
-  --success-bg: #eaf4ed;
-  --warning: #87571c;
-  --warning-bg: #fbf0dd;
+  --bg: #f3eddf;
+  --surface: #fff9ed;
+  --ink: #203b2e;
+  --muted: #606e5e;
+  --soft: var(--muted);
+  --border: #d4d4bf;
+  --purple: #99502c;
+  --green: #99502c;
+  --accent-fill: #99502c;
+  --button-ink: #fff8e9;
+  --accent-soft: #f1ddc5;
+  --quiet: #e9e5d5;
+  --success: #365d3c;
+  --success-bg: #e1e8d3;
+  --warning: #875121;
+  --warning-bg: #f4e3c5;
+  --error: #9d402c;
+  --error-bg: #f6e3d8;
   background: var(--bg);
   color: var(--ink);
 }
@@ -149,7 +156,7 @@
 :root .button.primary,
 :root .hero-button {
   background: var(--accent-fill);
-  color: #fff;
+  color: var(--button-ink);
   box-shadow: none;
 }
 :root .button.primary:hover,
@@ -438,19 +445,105 @@
 :root .toggle.on {
   background: var(--accent-fill);
 }
-:root[data-theme="dark"] .icon-tile.screen,
-:root[data-theme="dark"] .icon-tile.posture,
-:root[data-theme="dark"] .icon-tile.sleep {
-  color: #d1b5f4;
-  background: #3c2f4d;
+:root[data-theme] .icon-tile {
+  color: var(--success);
+  background: var(--success-bg);
 }
-:root[data-theme="dark"] .icon-tile.mindfulness {
-  color: #f5a9c2;
-  background: #442d39;
+:root[data-theme] .icon-tile.screen,
+:root[data-theme] .icon-tile.mindfulness,
+:root[data-theme] .icon-tile.sleep,
+:root[data-theme] .icon-tile.smoking {
+  color: var(--purple);
+  background: var(--accent-soft);
 }
-:root[data-theme="dark"] .icon-tile.movement {
-  color: #9bdbc1;
-  background: #283e36;
+
+/* Forest anchors, copper-orange actions, and warm cream reading surfaces. */
+:root .sidebar {
+  --surface: #193b2c;
+  --ink: #f4ecd8;
+  --muted: #c3ccb8;
+  --soft: var(--muted);
+  --border: #3a5544;
+  --purple: #edb27d;
+  --accent-soft: #304b38;
+  --quiet: #264834;
+  background: var(--surface);
+  color: var(--ink);
+}
+:root .sidebar .profile {
+  border-color: var(--border);
+}
+:root .hero {
+  --ink: #f4ecd8;
+  --muted: #c3ccb8;
+  --purple: #edb27d;
+  --accent-fill: #d99a64;
+  --button-ink: #142c21;
+  background: #193b2c;
+  border-color: #3a5544;
+}
+:root ::selection {
+  background: #d99a64;
+  color: #142c21;
+}
+:root .auth-page {
+  background: var(--bg);
+}
+:root .auth-card,
+:root .toast {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--border);
+  box-shadow: none;
+}
+:root .auth-grid h1 {
+  color: var(--ink);
+}
+:root .auth-grid h1 em,
+:root .auth-grid .eyebrow,
+:root .future-panel .eyebrow,
+:root .toast > button,
+:root .toast > .icon-button,
+:root .text-button:hover {
+  color: var(--purple);
+}
+:root .auth-grid > div > p,
+:root .auth-card > p,
+:root .auth-card small,
+:root .auth-foot,
+:root .auth-caption,
+:root .auth-tagline,
+:root .auth-top > span,
+:root .roadmap-row,
+:root .checkbox-label,
+:root .empty,
+:root footer {
+  color: var(--muted);
+}
+:root input::placeholder,
+:root textarea::placeholder {
+  color: var(--muted);
+}
+:root dialog {
+  box-shadow: 0 24px 80px #0d241b55;
+}
+:root dialog::backdrop {
+  background: #0d241b99;
+}
+:root .danger {
+  color: var(--error);
+}
+:root .form-error,
+:root .error-banner {
+  background: var(--error-bg);
+  color: var(--error);
+  border-color: var(--error);
+}
+:root .toggle:not(.on) {
+  background: var(--border);
+}
+:root .toggle span {
+  background: #fff8e9;
 }
 
 /* Hard edges for every UI surface; circles remain only in artwork and status dots. */
@@ -531,7 +624,7 @@
   color: var(--ink);
 }
 :root .owl-eyes {
-  transform-origin: 180px 144px;
+  transform-origin: 180px 120px;
 }
 
 @media (max-width: 1000px) {

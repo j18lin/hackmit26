@@ -3,7 +3,7 @@ import { deflateSync } from "node:zlib";
 import { writeFileSync } from "node:fs";
 import { owlShapes } from "../shared/owl-art.js";
 
-const background = "#e6deed";
+const background = "#f3eddf";
 const rgb = (hex) =>
   [1, 3, 5].map((offset) => parseInt(hex.slice(offset, offset + 2), 16));
 const shapes = owlShapes
