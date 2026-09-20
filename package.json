@@ -23,6 +23,7 @@
     "lucide-react": "^0.468.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "serialport": "^13.0.0",
     "web-push": "^3.6.7",
     "yaml": "^2.9.1"
   },

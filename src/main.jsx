@@ -1156,6 +1156,7 @@ function App() {
           )}
           {page === "Devices & robot" && (
             <>
+              <VisionMonitor />
               <section className="panel">
                 <div className="panel-heading">
                   <div>
@@ -1467,6 +1468,263 @@ function EmptyHabits({ onAdd }) {
     </div>
   );
 }
+// Posture/phone/bottle monitoring straight from the browser: grabs frames
+// from the webcam and POSTs them to /api/vision/frame, which forwards them
+// to the Arduino Uno Q. All the CV and the violation decisions still happen
+// on the board -- this component only captures, displays, and paces.
+//
+// Replaces having to run hardware/cv/phone_detection/monitor_arduino.py in a
+// terminal; that script still works and talks to the same board.
+const CALIBRATION_SECONDS = 5;
+
+function VisionMonitor() {
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+  const runningRef = useRef(false);
+
+  const [cameras, setCameras] = useState([]);
+  const [cameraId, setCameraId] = useState("");
+  const [running, setRunning] = useState(false);
+  const [phase, setPhase] = useState("idle"); // idle | calibrating | watching
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
+  const [fps, setFps] = useState(0);
+  const [fired, setFired] = useState([]);
+
+  // Labels only populate after permission is granted, so enumerate again
+  // once the stream is live.
+  const loadCameras = useCallback(async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videos = devices.filter((d) => d.kind === "videoinput");
+      setCameras(videos);
+      setCameraId((current) =>
+        current || videos.find((d) => /c920|logitech/i.test(d.label))?.deviceId ||
+        videos[0]?.deviceId || "",
+      );
+    } catch {
+      /* enumeration is best-effort */
+    }
+  }, []);
+
+  useEffect(() => {
+    loadCameras();
+    return () => stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function stop() {
+    runningRef.current = false;
+    setRunning(false);
+    setPhase("idle");
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+  }
+
+  async function postFrame(mode) {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || !video.videoWidth) return null;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d").drawImage(video, 0, 0);
+    const blob = await new Promise((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.7),
+    );
+    if (!blob) return null;
+    const response = await fetch(`/api/vision/frame?mode=${mode}`, {
+      method: "POST",
+      headers: { "Content-Type": "image/jpeg" },
+      body: blob,
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Vision request failed.");
+    return data;
+  }
+
+  async function start() {
+    setError("");
+    setFired([]);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: cameraId ? { deviceId: { exact: cameraId } } : true,
+      });
+      streamRef.current = stream;
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play();
+      loadCameras();
+    } catch (streamError) {
+      setError(
+        streamError.name === "NotAllowedError"
+          ? "Camera permission denied. Allow camera access and try again."
+          : `Could not open the camera: ${streamError.message}`,
+      );
+      return;
+    }
+
+    runningRef.current = true;
+    setRunning(true);
+    // Recalibrate on every start: the baseline depends on where you're
+    // sitting and how the camera is angled right now.
+    setPhase("calibrating");
+    await fetch("/api/vision/frame?mode=reset", { method: "POST" }).catch(() => {});
+    loop();
+  }
+
+  async function loop() {
+    let calibrating = true;
+    let last = performance.now();
+    while (runningRef.current) {
+      try {
+        const data = await postFrame(calibrating ? "calibrate" : "infer");
+        if (!data) {
+          await new Promise((r) => setTimeout(r, 200));
+          continue;
+        }
+        setResult(data);
+        setError("");
+        if (calibrating && data.calibration?.calibrated) {
+          calibrating = false;
+          setPhase("watching");
+        }
+        if (data.recorded?.length)
+          setFired((previous) =>
+            [...data.recorded.map((r) => r.field), ...previous].slice(0, 8),
+          );
+        const now = performance.now();
+        setFps(1000 / Math.max(now - last, 1));
+        last = now;
+      } catch (loopError) {
+        // The board reboots often; keep the loop alive and show why.
+        setError(loopError.message);
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    }
+  }
+
+  const reading = result?.reading;
+  const calibration = result?.calibration;
+  const progress = result?.violation_progress || {};
+  const detected = new Set((result?.detections || []).map(([label]) => label));
+
+  let postureLabel = "—";
+  if (phase === "calibrating") postureLabel = "calibrating…";
+  else if (!calibration?.calibrated) postureLabel = "not calibrated";
+  else if (result && result.head_height === null)
+    postureLabel = `unreadable (${result.posture_blocker})`;
+  else if (reading?.slouching) postureLabel = "slouching";
+  else if (reading) postureLabel = "upright";
+
+  const chip = (label, active, detail) => (
+    <div className={`vision-chip${active ? " on" : ""}`} key={label}>
+      <strong>{label}</strong>
+      <span>{detail}</span>
+    </div>
+  );
+
+  return (
+    <section className="panel">
+      <div className="panel-heading">
+        <div>
+          <h2>Camera monitoring</h2>
+          <p>
+            Your camera stays in this browser — frames go to the Owlert board
+            for analysis, and only violations are saved.
+          </p>
+        </div>
+        <div className="vision-controls">
+          <select
+            value={cameraId}
+            onChange={(event) => setCameraId(event.target.value)}
+            disabled={running}
+            aria-label="Camera"
+          >
+            {cameras.length === 0 && <option value="">Default camera</option>}
+            {cameras.map((camera, index) => (
+              <option key={camera.deviceId} value={camera.deviceId}>
+                {camera.label || `Camera ${index + 1}`}
+              </option>
+            ))}
+          </select>
+          <button
+            className={`button ${running ? "" : "primary"}`}
+            onClick={() => (running ? stop() : start())}
+          >
+            {running ? "Stop" : "Start monitoring"}
+          </button>
+        </div>
+      </div>
+
+      {error && <p className="form-error">{error}</p>}
+
+      <div className="vision-grid">
+        <div className="vision-video">
+          <video ref={videoRef} muted playsInline />
+          <canvas ref={canvasRef} hidden />
+          {!running && <div className="vision-idle">Camera off</div>}
+          {phase === "calibrating" && (
+            <div className="vision-banner">
+              Sit how you want to sit — calibrating for {CALIBRATION_SECONDS}s
+              {calibration ? ` (${calibration.seconds_elapsed.toFixed(1)}s)` : ""}
+            </div>
+          )}
+        </div>
+
+        <div className="vision-readout">
+          {chip("Posture", reading?.slouching, postureLabel)}
+          {chip(
+            "Phone",
+            reading?.doomscrolling,
+            reading?.doomscrolling
+              ? "in use"
+              : detected.has("cell phone")
+                ? "seen, not close"
+                : "not seen",
+          )}
+          {chip(
+            "Water bottle",
+            reading?.drinkingWater,
+            reading?.drinkingWater
+              ? "in use"
+              : detected.has("bottle")
+                ? "seen, not close"
+                : "not seen",
+          )}
+
+          {phase === "watching" && (
+            <div className="vision-progress">
+              {["slouching", "doomscrolling"].map((field) => {
+                const p = progress[field];
+                if (!p?.samples) return null;
+                return (
+                  <div key={field}>
+                    <span>{field === "slouching" ? "Slouching" : "Phone use"}</span>
+                    <div className="vision-bar">
+                      <div style={{ width: `${Math.min(p.density * 100, 100)}%` }} />
+                    </div>
+                    <small>
+                      {Math.round(p.density * 100)}% of last{" "}
+                      {Math.round(p.window_filled_s)}s
+                    </small>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {fired.length > 0 && (
+            <p className="vision-fired">
+              Logged: {fired.join(", ")}
+            </p>
+          )}
+          {running && <small className="vision-fps">{fps.toFixed(1)} fps</small>}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function DeviceList({ state, busy, act }) {
   return state.devices.length ? (
     <div>

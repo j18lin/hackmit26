@@ -2472,3 +2472,102 @@ dialog::backdrop {
     height: 36px;
   }
 }
+
+/* --- Camera monitoring (VisionMonitor) --- */
+.vision-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.vision-controls select {
+  max-width: 220px;
+}
+.vision-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 16px;
+  margin-top: 12px;
+}
+@media (max-width: 760px) {
+  .vision-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.vision-video {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.35);
+  min-height: 200px;
+}
+.vision-video video {
+  width: 100%;
+  display: block;
+  transform: scaleX(-1); /* mirror, so it reads like a mirror not a camera */
+}
+.vision-idle,
+.vision-banner {
+  position: absolute;
+  inset-inline: 0;
+  text-align: center;
+  font-size: 0.85rem;
+  padding: 8px;
+}
+.vision-idle {
+  inset-block: 0;
+  display: grid;
+  place-items: center;
+  opacity: 0.6;
+}
+.vision-banner {
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  color: #ffd76a;
+}
+.vision-readout {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.vision-chip {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.85rem;
+}
+.vision-chip.on {
+  border-color: rgba(255, 120, 120, 0.6);
+  background: rgba(255, 90, 90, 0.12);
+}
+.vision-chip span {
+  opacity: 0.75;
+}
+.vision-progress {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 0.8rem;
+}
+.vision-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  margin: 4px 0 2px;
+}
+.vision-bar div {
+  height: 100%;
+  background: linear-gradient(90deg, #6ad1ff, #ff6ad1);
+}
+.vision-fired {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+.vision-fps {
+  opacity: 0.5;
+}

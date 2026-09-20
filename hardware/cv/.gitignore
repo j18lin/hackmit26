@@ -2,3 +2,6 @@
 __pycache__/
 *.pyc
 .env
+
+# per-session posture baselines (runtime state)
+posture_calibration*.json
