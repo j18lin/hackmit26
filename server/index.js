@@ -24,7 +24,7 @@ import {
   createChallenge,
   checkChallengeAnswer,
 } from "./domain.js";
-import { voiceConfigured, synthesize, transcribe, owlify } from "./voice.js";
+import { voiceConfigured, synthesize, transcribe, soften } from "./voice.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dataDir = path.resolve(process.env.DATA_DIR || path.join(root, "data"));
@@ -258,7 +258,7 @@ voiceRouter.post("/speak", async (req, res, next) => {
       .status(400)
       .json({ error: "Enter text between 1 and 400 characters." });
   try {
-    const audio = await synthesize(owlify(text));
+    const audio = await synthesize(soften(text));
     res.set("Content-Type", "audio/mpeg");
     res.set("Cache-Control", "no-store");
     res.send(audio);
@@ -289,7 +289,7 @@ voiceRouter.get("/challenge/:id/audio", async (req, res, next) => {
   if (!challenge)
     return res.status(404).json({ error: "Challenge not found." });
   try {
-    const audio = await synthesize(owlify(challenge.prompt));
+    const audio = await synthesize(soften(challenge.prompt));
     res.set("Content-Type", "audio/mpeg");
     res.set("Cache-Control", "no-store");
     res.send(audio);

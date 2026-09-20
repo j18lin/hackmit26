@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { owlify } from "../server/voice.js";
+import { soften } from "../server/voice.js";
 import {
   validateHabit,
   quietNow,
@@ -140,10 +140,10 @@ test("voice challenges produce solvable prompts", () => {
       : Number(first) * Number(second),
   );
 });
-test("owlify wraps text in owl hoots", () => {
+test("soften wraps text in a calm framing", () => {
   assert.equal(
-    owlify("Drink water.", () => 0),
-    "Hoo-hoo! Drink water. Wise up and rest well.",
+    soften("Drink water.", () => 0),
+    "Hey there. Drink water. Take your time.",
   );
 });
 test("spoken numbers parse digits and English number words", () => {

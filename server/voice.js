@@ -51,9 +51,9 @@ export async function synthesize(text) {
         text,
         model_id: modelId,
         voice_settings: {
-          stability: 0.35,
-          similarity_boost: 0.8,
-          style: 0.6,
+          stability: 0.65,
+          similarity_boost: 0.75,
+          style: 0.15,
           use_speaker_boost: true,
         },
       }),
@@ -62,16 +62,11 @@ export async function synthesize(text) {
   return Buffer.from(await response.arrayBuffer());
 }
 
-const OWL_OPENERS = ["Hoo-hoo!", "Hoot hoot.", "Whooo's there?", "Hoo, hoo."];
-const OWL_CLOSERS = [
-  "Wise up and rest well.",
-  "This owl is watching.",
-  "Hoot!",
-  "Whooo's got this? You do.",
-];
-export function owlify(text, rand = Math.random) {
+const OPENERS = ["Hey there.", "Hi.", "Good to see you."];
+const CLOSERS = ["Take your time.", "No rush.", "You've got this."];
+export function soften(text, rand = Math.random) {
   const pick = (list) => list[Math.floor(rand() * list.length)];
-  return `${pick(OWL_OPENERS)} ${text.trim()} ${pick(OWL_CLOSERS)}`;
+  return `${pick(OPENERS)} ${text.trim()} ${pick(CLOSERS)}`;
 }
 
 export async function transcribe(buffer, mimeType) {
