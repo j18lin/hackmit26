@@ -9,6 +9,9 @@ import {
   tmp117ToCelsius,
   streakDurationMs,
   evaluateSensorThresholds,
+  createChallenge,
+  parseSpokenNumber,
+  checkChallengeAnswer,
 } from "../server/domain.js";
 const habit = {
   name: " Slouching ",
@@ -140,4 +143,30 @@ test("sensor thresholds flag only fields whose streak has crossed their limit", 
   assert.equal(result.slouching.exceeded, true);
   assert.equal(result.doomscrolling.durationMs, 0);
   assert.equal(result.doomscrolling.exceeded, false);
+});
+test("voice challenges produce solvable prompts", () => {
+  const challenge = createChallenge(() => 0);
+  assert.match(challenge.prompt, /what is \d+ (plus|times) \d+\?/);
+  const [, first, operation, second] = challenge.prompt.match(
+    /what is (\d+) (plus|times) (\d+)\?/,
+  );
+  assert.equal(
+    challenge.answer,
+    operation === "plus"
+      ? Number(first) + Number(second)
+      : Number(first) * Number(second),
+  );
+});
+test("spoken numbers parse digits and English number words", () => {
+  assert.equal(parseSpokenNumber("12"), 12);
+  assert.equal(parseSpokenNumber("twelve"), 12);
+  assert.equal(parseSpokenNumber("twenty one"), 21);
+  assert.equal(parseSpokenNumber("forty-two"), 42);
+  assert.equal(parseSpokenNumber("The answer is 8."), 8);
+  assert.equal(parseSpokenNumber("banana"), null);
+});
+test("challenge answers compare parsed spoken numbers", () => {
+  assert.equal(checkChallengeAnswer(12, "twelve"), true);
+  assert.equal(checkChallengeAnswer(12, "13"), false);
+  assert.equal(checkChallengeAnswer(42, "forty two"), true);
 });

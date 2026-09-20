@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Nudge — Your owl companion",
-  "short_name": "Nudge",
+  "name": "Owlert — Your owl companion",
+  "short_name": "Owlert",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

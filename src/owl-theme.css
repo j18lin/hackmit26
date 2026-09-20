@@ -1,4 +1,4 @@
-/* Dashdark: a navy + magenta admin-dashboard palette for every Nudge surface. */
+/* Base owl palette; dashboard-design.css supplies Owlert's current theme. */
 :root {
   color-scheme: dark;
   color: #f4f6ff;

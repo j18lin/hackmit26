@@ -5,7 +5,7 @@ self.addEventListener("activate", (event) =>
 );
 self.addEventListener("push", (event) => {
   let payload = {
-    title: "A little nudge",
+    title: "Owlert reminder",
     body: "Take a moment to check in with yourself.",
   };
   try {
