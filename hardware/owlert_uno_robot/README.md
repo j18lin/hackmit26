@@ -3,12 +3,34 @@
 This sketch controls the **separate ATmega328P Uno R3 robot**, not the UNO Q.
 It needs no RouterBridge, Zephyr, Wi-Fi, or inference model.
 
-The intended flow is laptop camera → UNO Q inference → results back to laptop.
-The laptop evaluates sustained habits, updates the dashboard, and sends the
-current robot state over a separate USB connection to the Uno R3. This sketch
-implements only that last robot endpoint; it does not wire up the inference
-client or dashboard automatically. The old `cv/bench/arduino_expression.py`
-targets the Q's internal bridge and is **not** the sender for this new sketch.
+## Current sketch: startup sequence demo
+
+The current sketch is based on the latest pasted **sequence demo**, not the
+earlier serial-controlled firmware. It runs angry → neutral → sad → neutral
+→ happy → neutral once at startup, then keeps the neutral face blinking.
+It **does not receive POSITIVE/NEGATIVE/NORMAL commands** or run inference.
+The previous serial protocol is retained below as historical integration notes.
+
+For the SG90 neck servo, angry and sad both turn between **79° and 101°**:
+
+- Angry: 12 ms per commanded degree, starting toward 101°.
+- Sad: 25 ms per commanded degree, starting toward 79°.
+- Each leg completes its software ramp, then pauses 200 ms before reversing.
+- The neck returns to 90° while the angry/sad face is still displayed.
+- Neutral and happy freeze all motor targets; no recentering in those states.
+
+The old 150/220 ms reversal delays were shorter than a complete 22° ramp
+(264 ms at 12 ms/degree). The fix waits for the commanded endpoint instead
+of assuming that a short fixed delay finished the turn. There is a 3-second
+software-ramp timeout. This is **not physical servo position feedback**.
+
+At 115200 baud, Serial Monitor shows `MODE DEMO_NECK_BIDIRECTIONAL`, then
+`STATE ANGRY` / `STATE SAD` and alternating `NECK target=101` / `NECK target=79`.
+The ten shakes per expression now take longer because the full turns finish.
+No board upload or physical test has been performed by the assistant.
+If those targets alternate but the physical neck still cannot turn both ways,
+check clearance, servo power/common ground, linkage, and the SG90 itself;
+do not increase the range to force it past a stop.
 
 ## Wiring and power
 
@@ -39,25 +61,25 @@ rail; connect grounds together. See [Arduino's servo power guidance](https://doc
 | --- | --- | --- | --- |
 | Neutral | Hold current position; no startup signal | Hold current position; no startup signal | Hold current position; no startup signal |
 | Happy / drinking water | Hold current position | Hold current position | Hold current position |
-| Angry / arms out | 80° | 96° | 99° |
-| Sad / arms in | 110° | 65° | 85° |
+| Angry / arms out | 90° | 86° | Shake 79°–101°, then 90° |
+| Sad / arms in | 105° | 71° | Shake 79°–101°, then 90° |
 
-Every subsequent move is limited to one degree per 25 ms, with arm commands
-clamped to your supplied limits. Servo outputs remain unattached at startup
-until the first `NEGATIVE` command; neutral boot never commands a center pose.
-**The first NEGATIVE can move from an unknown physical position** when the
-outputs attach (initial commanded reference: left 99°, right 77°, neck 92°).
+Arm moves are limited to one degree per 12 ms; neck speed depends on the
+expression as described above. Angles are clamped to your supplied limits.
+The demo attaches outputs when it starts the first angry expression.
+**This demo moves automatically at startup.** Its first attachment can move
+from an unknown physical position (reference: left 99°, right 77°, neck 90°).
 Servo write angles are commands,
 not measurements or force limits.
 
-The neck preserves the latest pasted sketch's 92° center. `NECK_SWING = 7` sets
-both the movement and software limits to **85–99°**, 7° either side.
+The neck preserves the latest demo's 90° center and `NECK_SHAKE_DELTA = 11`.
+The requested shake endpoints are 79° and 101°, within software limits 75°–105°.
 There is no neutral idle motion, neck sweep, or return-to-center movement.
 Only negative reactions command movement. Physical left/right depends on mounting.
 Software limits do not establish mechanical clearance.
 Disconnect the neck linkage for the first test; verify the actual center and
-safe travel before reconnecting. Adjust `NECK_CENTER` and `NECK_SWING` after
-calibration; the limits and alert poses are derived from them. Set `NECK_ENABLED = false`
+safe travel before reconnecting. Adjust `NECK_CENTER`, `NECK_SHAKE_DELTA`,
+`NECK_MIN`, and `NECK_MAX` after calibration. Set `NECK_ENABLED = false`
 to disable the neck signal (this does not disconnect its power).
 
 ## Install and upload
@@ -77,18 +99,20 @@ not in this sketch.
 5. Open Serial Monitor at **115200 baud** with **Newline** selected.
 
 The LCD code matches the previous **16×2 HD44780 I2C display**. It tries `0x27`
-then `0x3F`, prints the responding address, and starts with neutral eyes that
-blink: open for 3.5 seconds, closed for 150 ms, then open again. This is the
-default even before any laptop command arrives. Blinking uses timers rather
-than animation delays, so serial handling and servo updates continue.
-An I2C response cannot identify the device model; the connected display must
-be this compatible type. If neither address responds, it logs
-`WARN LCD_NOT_FOUND` and still runs the servos/serial. An I2C timeout disables
-the display until restart. If the backlight is on but the face is invisible,
+then `0x3F` and runs the startup expression demo. Neutral eyes stay open for
+3.5 seconds and close for 150 ms per blink. The final neutral state blinks
+indefinitely; intermediate neutral holds are only 2.5 seconds, so they may
+end before the next blink. An I2C response cannot identify the device model;
+the display must be this compatible type. If neither address responds, this
+demo skips LCD rendering but still runs the servos. If the backlight is on but the face is invisible,
 adjust the backpack's contrast potentiometer. Only eight custom glyphs are
 used at once, within this LCD's hardware limit.
 
-## Commands and behavior
+## Archived serial firmware notes — not active in the current demo
+
+Everything below describes the **previous serial-controlled sketch**, not
+the current startup demo. These commands and startup messages will not work
+with the current file. Retained for later laptop integration only.
 
 Send ASCII commands terminated by a newline (`\n`). Case-insensitive;
 CRLF is also accepted. Keep one USB serial connection open for the session.
