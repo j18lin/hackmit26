@@ -36,7 +36,7 @@ export const habitPresets = [
       "Feeling sleepy at your desk? Pause your task and check whether you need rest.",
     hint: "Log when you notice yourself nodding off at your desk.",
     future:
-      "Planned: an optional spoken math or word challenge through ElevenLabs. Voice challenges are not connected yet and are not a substitute for rest.",
+      "Optional: a spoken math check through ElevenLabs. Available when the server has an ElevenLabs key. Voice checks are not a substitute for rest.",
   },
   {
     key: "water-breaks",

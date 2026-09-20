@@ -42,6 +42,78 @@ export function validateHabit(input) {
   };
 }
 
+export function createChallenge(rand = Math.random) {
+  const operation = rand() < 0.5 ? "plus" : "times";
+  const first =
+    operation === "plus"
+      ? 2 + Math.floor(rand() * 19)
+      : 2 + Math.floor(rand() * 8);
+  const second =
+    operation === "plus"
+      ? 2 + Math.floor(rand() * 19)
+      : 2 + Math.floor(rand() * 8);
+  return {
+    prompt: `Quick check. What is ${first} ${operation} ${second}?`,
+    answer: operation === "plus" ? first + second : first * second,
+  };
+}
+
+const numberWords = new Map([
+  ["zero", 0],
+  ["one", 1],
+  ["two", 2],
+  ["three", 3],
+  ["four", 4],
+  ["five", 5],
+  ["six", 6],
+  ["seven", 7],
+  ["eight", 8],
+  ["nine", 9],
+  ["ten", 10],
+  ["eleven", 11],
+  ["twelve", 12],
+  ["thirteen", 13],
+  ["fourteen", 14],
+  ["fifteen", 15],
+  ["sixteen", 16],
+  ["seventeen", 17],
+  ["eighteen", 18],
+  ["nineteen", 19],
+  ["twenty", 20],
+  ["thirty", 30],
+  ["forty", 40],
+  ["fifty", 50],
+  ["sixty", 60],
+  ["seventy", 70],
+  ["eighty", 80],
+  ["ninety", 90],
+]);
+
+export function parseSpokenNumber(text) {
+  if (typeof text !== "string") return null;
+  const digits = text.match(/-?\d+/);
+  if (digits) return Number.parseInt(digits[0], 10);
+  const words = text
+    .toLowerCase()
+    .replaceAll("-", " ")
+    .match(/[a-z]+/g);
+  if (!words) return null;
+  for (let i = 0; i < words.length; i++) {
+    const first = numberWords.get(words[i]);
+    if (first === undefined) continue;
+    if (first >= 20 && first % 10 === 0) {
+      const ones = numberWords.get(words[i + 1]);
+      if (ones !== undefined && ones < 10) return first + ones;
+    }
+    return first;
+  }
+  return null;
+}
+
+export function checkChallengeAnswer(expected, given) {
+  return parseSpokenNumber(given) === expected;
+}
+
 export function dayKey(date, timezone) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: timezone,

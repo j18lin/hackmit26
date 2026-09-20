@@ -22,6 +22,12 @@ npm start
 
 The server then serves the built website and API together on **http://localhost:3001**. Optional environment variables are documented in `.env.example`; copy it to `.env` to customize. Both server scripts load `.env` automatically. Keep `PORT=3001` during Vite development, or update its proxy too.
 
+Set `ELEVENLABS_API_KEY` on the server to enable voice nudges and wake-up
+checks. `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID`, and
+`ELEVENLABS_BASE_URL` are optional overrides; the base URL is useful for tests
+and proxies. Spoken lines get a short, calm framing; override the voice with
+`ELEVENLABS_VOICE_ID`. Provider credentials never reach the browser.
+
 ## What works
 
 - Light lavender (default) and dark purple owl themes with a clickable, animated fly-away welcome. Switch using the sun/moon button or **Settings → Appearance**. Theme choice saves per browser, syncs between tabs, and is applied before the first paint. The intro appears once per tab session and can be replayed by clicking the dashboard owl or **Say hello to your owl** in the sidebar. Keyboard entry, a skip button, and reduced-motion preferences are supported.
@@ -30,6 +36,7 @@ The server then serves the built website and API together on **http://localhost:
 - SQLite persistence and cross-device refresh every 15 seconds. Day boundaries follow the workspace timezone.
 - Server-originated Web Push to all enabled subscribed devices, including when the page is closed (subject to browser/OS delivery settings).
 - Per-habit scheduled nudges, daily-limit nudges, quiet hours, global pause, per-device pause, disconnection, and test notifications.
+- Server-side ElevenLabs voice nudges and spoken wake-up checks for sleep habits; failed checks log an observation.
 - Installable app manifest, PNG icons, and a push service worker. No private API response caching; dashboard use requires a network connection.
 - Passphrase hashing with scrypt, expiring HttpOnly sessions, request limits, same-origin mutation checks, and push-provider allowlisting.
 - Separately authenticated robot API, key rotation, robot observation history, and raw sensor telemetry (booleans plus TMP117 temperature) with server-computed durations.
@@ -47,7 +54,7 @@ Choose a preset from **Add habit → Start with a preset** or the library on **M
 - Smoking
 - Poor lifting habits
 
-All logs currently count unwanted occurrences. Water means **missed water breaks**, and sleep time means **staying up past your intended bedtime**; these are not water-volume or sleep-duration measurements. Thresholds are reminder settings, not recommended health targets. The desk-sleep preset describes an optional spoken math/word challenge through ElevenLabs as **planned**; no voice API is connected yet.
+All logs currently count unwanted occurrences. Water means **missed water breaks**, and sleep time means **staying up past your intended bedtime**; these are not water-volume or sleep-duration measurements. Thresholds are reminder settings, not recommended health targets. The desk-sleep preset offers an optional spoken math check through ElevenLabs when the server has an API key; voice checks are not a substitute for rest.
 
 ## Phone + laptop notifications
 
@@ -92,7 +99,6 @@ curl https://YOUR_HOST/api/robot/sensors \
 
 ### Future work
 
-- **ElevenLabs:** add a server-side voice/conversation adapter that reads workspace context and logs observations through the existing event path. Keep provider credentials server-side. Voice UI is explicitly marked planned.
 - **Arduino:** poll the detectors and the TMP117 on an interval and forward each snapshot to `/api/robot/sensors`; add confidence thresholds and debouncing before treating a boolean as reliable. Choose hardware/model after deciding which habits and sensors to detect.
 - Multi-user accounts, account recovery, a durable notification job queue, per-habit routing, and deployment-specific monitoring are future production work.
 
@@ -113,6 +119,10 @@ curl https://YOUR_HOST/api/robot/sensors \
 | `POST /api/robot/events`                             | Bearer-authenticated robot observation                                             |
 | `POST /api/robot/sensors`                            | Bearer-authenticated sensor snapshot (booleans + TMP117 raw temperature)           |
 | `GET /api/sensors/latest`                            | Latest snapshot, converted temperature, and computed doomscrolling/sleep durations |
+| `POST /api/voice/speak`                              | Session-authenticated ElevenLabs text-to-speech                                    |
+| `POST /api/voice/challenge`                          | Create a spoken wake-up check for an active habit                                  |
+| `GET /api/voice/challenge/:id/audio`                 | Speak a wake-up check prompt                                                       |
+| `POST /api/voice/challenge/:id/answer`               | Submit typed text or recorded audio for a wake-up check                            |
 
 All endpoints except session setup/status and robot ingestion require a session cookie. Robot keys grant event and sensor ingestion only. Subscription endpoints and private keys are never returned in workspace state.
 
@@ -122,7 +132,7 @@ Data lives in `data/nudge.sqlite` (including sessions, generated push keys and s
 
 Only run one API instance: its in-process reminder scheduler is intentionally simple for a hackathon. A managed job queue is needed before scaling to multiple replicas. Rate limits use the direct connection IP; with a reverse proxy they can apply collectively. Configure deployment-specific trusted proxy handling before broader production use. Bootstrap the workspace before public access, use HTTPS and a strong passphrase, and share the passphrase only with trusted collaborators.
 
-This prototype supports habit awareness; it is not a medical device or diagnostic tool. Phone delivery is implemented but must be verified with your own subscribed devices on the HTTPS deployment. ElevenLabs and Arduino inference are not yet implemented.
+This prototype supports habit awareness; it is not a medical device or diagnostic tool. Phone delivery is implemented but must be verified with your own subscribed devices on the HTTPS deployment. Arduino inference is not yet implemented.
 
 ## Checks
 

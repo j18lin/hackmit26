@@ -17,6 +17,7 @@ import {
   Footprints,
   Hand,
   LayoutDashboard,
+  Mic,
   Leaf,
   Link2,
   LoaderCircle,
@@ -97,6 +98,28 @@ async function api(url, method = "GET", body) {
   if (!response.ok)
     throw new Error(data.error || "Something went wrong. Please try again.");
   return data;
+}
+async function playApiAudio(url, method = "GET", body) {
+  const response = await fetch(`/api${url}`, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!response.ok) {
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      data = {};
+    }
+    throw new Error(data.error || "Something went wrong. Please try again.");
+  }
+  const audio = new Audio(URL.createObjectURL(await response.blob()));
+  audio.addEventListener("ended", () => URL.revokeObjectURL(audio.src), {
+    once: true,
+  });
+  await audio.play();
+  return audio;
 }
 function dateKey(date, timezone) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -188,7 +211,8 @@ function App() {
   const [editing, setEditing] = useState(null),
     [connect, setConnect] = useState(false),
     [help, setHelp] = useState(false),
-    [robotKey, setRobotKey] = useState("");
+    [robotKey, setRobotKey] = useState(""),
+    [voiceCheck, setVoiceCheck] = useState(null);
   const [filter, setFilter] = useState("All habits"),
     [installPrompt, setInstallPrompt] = useState(null);
   async function load() {
@@ -461,6 +485,21 @@ function App() {
                 >
                   <MoreHorizontal size={21} />
                 </button>
+                {state.voice?.configured && (
+                  <button
+                    className="icon-button habit-menu"
+                    aria-label={`Hear ${h.name} nudge`}
+                    onClick={() =>
+                      playApiAudio("/voice/speak", "POST", {
+                        text:
+                          h.description ||
+                          `Check in with your ${h.name.toLowerCase()} habit.`,
+                      }).catch((error) => setError(error.message))
+                    }
+                  >
+                    <Volume2 size={18} />
+                  </button>
+                )}
               </div>
               <h3>{h.name}</h3>
               <p>
@@ -494,6 +533,14 @@ function App() {
                 >
                   <Plus size={15} /> Log
                 </button>
+                {state.voice?.configured && h.category === "sleep" && (
+                  <button
+                    disabled={busy || !h.active}
+                    onClick={() => setVoiceCheck(h)}
+                  >
+                    <Mic size={15} /> Voice check
+                  </button>
+                )}
               </div>
             </article>
           );
@@ -1208,8 +1255,8 @@ function App() {
                     not just a notification.
                   </h2>
                   <p>
-                    Voice conversations powered by ElevenLabs, and on-device
-                    habit detection with Arduino, are next on our roadmap.
+                    Voice nudges and wake-up checks are powered by ElevenLabs
+                    and enabled by setting ELEVENLABS_API_KEY on the server.
                   </p>
                   <div className="roadmap-row">
                     <CheckCheck size={18} />
@@ -1224,7 +1271,11 @@ function App() {
                   <div className="roadmap-row">
                     <Volume2 size={18} />
                     <span>ElevenLabs voice companion</span>
-                    <span className="pill neutral">Planned</span>
+                    {state.voice?.configured ? (
+                      <span className="pill green">Connected</span>
+                    ) : (
+                      <span className="pill neutral">Add API key</span>
+                    )}
                   </div>
                   <div className="roadmap-row">
                     <Bot size={18} />
@@ -1294,6 +1345,15 @@ function App() {
           busy={busy}
         />
       )}
+      {voiceCheck && (
+        <VoiceCheckModal
+          habit={voiceCheck}
+          onClose={() => setVoiceCheck(null)}
+          act={act}
+          reload={load}
+          setError={setError}
+        />
+      )}
       {help && (
         <Modal title="Small steps start here" onClose={() => setHelp(false)}>
           <div className="help-content">
@@ -1315,8 +1375,9 @@ function App() {
               Insights, and set quiet hours under Settings.
             </p>
             <div className="info-strip">
-              This is a habit-awareness prototype, not a medical device. The
-              robot and voice integrations are future features.
+              This is a habit-awareness prototype, not a medical device. Arduino
+              detection is a future feature; voice needs an ElevenLabs key on
+              the server.
             </div>
           </div>
         </Modal>
@@ -1452,6 +1513,236 @@ function DeviceList({ state, busy, act }) {
       <h3>Your nudges need a home.</h3>
       <p>Connect this device to receive your first reminder.</p>
     </div>
+  );
+}
+function VoiceCheckModal({ habit, onClose, act, reload, setError }) {
+  const [challenge, setChallenge] = useState(null);
+  const [result, setResult] = useState(null);
+  const [answer, setAnswer] = useState("");
+  const [seconds, setSeconds] = useState(0);
+  const [recording, setRecording] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const recorder = useRef(null);
+  const stream = useRef(null);
+  const chunks = useRef([]);
+  const held = useRef(false);
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    act(() => api("/voice/challenge", "POST", { habitId: habit.id })).then(
+      async (data) => {
+        if (!mounted.current) return;
+        setLoading(false);
+        if (!data) {
+          setFailed(true);
+          return;
+        }
+        setChallenge(data);
+        setSeconds(
+          Math.max(
+            0,
+            Math.ceil((new Date(data.expiresAt) - Date.now()) / 1000),
+          ),
+        );
+        playApiAudio(`/voice/challenge/${data.id}/audio`).catch(() => {});
+      },
+    );
+    return () => {
+      mounted.current = false;
+      stream.current?.getTracks().forEach((track) => track.stop());
+      if (recorder.current?.state === "recording") recorder.current.stop();
+    };
+  }, [habit.id]);
+
+  useEffect(() => {
+    if (!challenge) return;
+    const timer = setInterval(() => {
+      setSeconds(
+        Math.max(
+          0,
+          Math.ceil((new Date(challenge.expiresAt) - Date.now()) / 1000),
+        ),
+      );
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [challenge]);
+
+  async function submitText(event) {
+    event.preventDefault();
+    if (!challenge || !answer.trim() || result) return;
+    const data = await act(() =>
+      api(`/voice/challenge/${challenge.id}/answer`, "POST", {
+        answer: answer.trim(),
+      }),
+    );
+    if (data) {
+      setResult(data);
+      await reload();
+    }
+  }
+
+  async function submitAudio(blob) {
+    const response = await fetch(
+      `/api/voice/challenge/${challenge.id}/answer`,
+      {
+        method: "POST",
+        headers: { "Content-Type": blob.type || "audio/webm" },
+        body: blob,
+      },
+    );
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      data = {};
+    }
+    if (!response.ok)
+      throw new Error(data.error || "Something went wrong. Please try again.");
+    return data;
+  }
+
+  async function startRecording(event) {
+    event.preventDefault();
+    if (
+      !challenge ||
+      result ||
+      recording ||
+      typeof MediaRecorder === "undefined"
+    )
+      return;
+    held.current = true;
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      });
+      if (!held.current || !mounted.current) {
+        s.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      stream.current = s;
+      const supported =
+        typeof MediaRecorder.isTypeSupported === "function" &&
+        MediaRecorder.isTypeSupported("audio/webm");
+      recorder.current = supported
+        ? new MediaRecorder(stream.current, { mimeType: "audio/webm" })
+        : new MediaRecorder(stream.current);
+      chunks.current = [];
+      recorder.current.ondataavailable = (event) => {
+        if (event.data.size) chunks.current.push(event.data);
+      };
+      recorder.current.onstop = async () => {
+        const blob = new Blob(chunks.current, {
+          type: recorder.current?.mimeType || "audio/webm",
+        });
+        stream.current?.getTracks().forEach((track) => track.stop());
+        stream.current = null;
+        try {
+          const data = await act(() => submitAudio(blob));
+          if (data) {
+            setResult(data);
+            await reload();
+          }
+        } catch (error) {
+          setError(error.message);
+        }
+      };
+      recorder.current.start();
+      setRecording(true);
+    } catch (error) {
+      stream.current?.getTracks().forEach((track) => track.stop());
+      stream.current = null;
+      setError(error.message);
+    }
+  }
+
+  function stopRecording() {
+    held.current = false;
+    if (recorder.current?.state === "recording") {
+      setRecording(false);
+      recorder.current.stop();
+    }
+  }
+
+  return (
+    <Modal title={`Voice check · ${habit.name}`} onClose={onClose}>
+      <div className="voice-check modal-form">
+        {loading ? (
+          <LoaderCircle className="spin" />
+        ) : failed ? (
+          <>
+            <p className="muted">Couldn't start the voice check.</p>
+            <button className="button secondary" onClick={onClose}>
+              Close
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="muted">
+              {challenge?.prompt}
+              <small>
+                {seconds ? `${seconds}s remaining` : "Challenge expired"}
+              </small>
+            </p>
+            <button
+              className="button secondary"
+              disabled={!challenge || Boolean(result)}
+              onClick={() =>
+                playApiAudio(`/voice/challenge/${challenge.id}/audio`).catch(
+                  (error) => setError(error.message),
+                )
+              }
+            >
+              <Volume2 size={16} /> Play again
+            </button>
+            <form onSubmit={submitText}>
+              <label>
+                Type your answer
+                <input
+                  value={answer}
+                  onChange={(event) => setAnswer(event.target.value)}
+                  placeholder="e.g. twelve"
+                  disabled={Boolean(result)}
+                />
+              </label>
+              <button
+                className="button primary"
+                disabled={!answer.trim() || Boolean(result)}
+              >
+                Answer
+              </button>
+            </form>
+            {typeof MediaRecorder !== "undefined" && (
+              <button
+                className={`button ${recording ? "primary recording" : "secondary"}`}
+                disabled={!challenge || Boolean(result)}
+                onPointerDown={startRecording}
+                onPointerUp={stopRecording}
+                onPointerCancel={stopRecording}
+                onPointerLeave={stopRecording}
+              >
+                <Mic size={16} />{" "}
+                {recording ? "Release to answer" : "Hold to speak"}
+              </button>
+            )}
+            {result && (
+              <div
+                className={`voice-result ${result.correct ? "correct" : "incorrect"}`}
+              >
+                <strong>{result.message}</strong>
+                {!result.correct && (
+                  <span>
+                    Heard “{result.heard || "nothing"}”; expected{" "}
+                    <strong>{result.expected}</strong>.
+                    {result.logged ? " An occurrence was logged." : ""}
+                  </span>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </Modal>
   );
 }
 function HabitModal({ habit, existingHabits, onClose, busy, act }) {
