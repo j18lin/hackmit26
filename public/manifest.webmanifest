@@ -1,12 +1,12 @@
 {
   "id": "/",
-  "name": "Nudge — Your owl companion",
-  "short_name": "Nudge",
+  "name": "Owlert — Your owl companion",
+  "short_name": "Owlert",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f8f5fc",
-  "theme_color": "#f8f5fc",
+  "background_color": "#081028",
+  "theme_color": "#081028",
   "icons": [
     {
       "src": "/icon-192.png",

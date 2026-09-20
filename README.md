@@ -1,4 +1,4 @@
-# Nudge 🌱
+# Owlert 🦉
 
 A habit-awareness companion for HackMIT 2026. Track several habits you want to reduce, notice patterns, and receive gentle nudges on your phone and laptop. This repository includes the website, persistent API, Web Push server, and an authenticated robot ingestion endpoint.
 
@@ -22,6 +22,11 @@ npm start
 
 The server then serves the built website and API together on **http://localhost:3001**. Optional environment variables are documented in `.env.example`; copy it to `.env` to customize. Both server scripts load `.env` automatically. Keep `PORT=3001` during Vite development, or update its proxy too.
 
+Set `ELEVENLABS_API_KEY` on the server to enable voice nudges and wake-up
+checks. `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID`, and
+`ELEVENLABS_BASE_URL` are optional overrides; the base URL is useful for tests
+and proxies. Provider credentials never reach the browser.
+
 ## What works
 
 - Light lavender (default) and dark purple owl themes with a clickable, animated fly-away welcome. Switch using the sun/moon button or **Settings → Appearance**. Theme choice saves per browser, syncs between tabs, and is applied before the first paint. The intro appears once per tab session and can be replayed by clicking the dashboard owl or **Say hello to your owl** in the sidebar. Keyboard entry, a skip button, and reduced-motion preferences are supported.
@@ -30,9 +35,10 @@ The server then serves the built website and API together on **http://localhost:
 - SQLite persistence and cross-device refresh every 15 seconds. Day boundaries follow the workspace timezone.
 - Server-originated Web Push to all enabled subscribed devices, including when the page is closed (subject to browser/OS delivery settings).
 - Per-habit scheduled nudges, daily-limit nudges, quiet hours, global pause, per-device pause, disconnection, and test notifications.
+- Server-side ElevenLabs voice nudges and spoken wake-up checks for sleep habits; failed checks log an observation.
 - Installable app manifest, PNG icons, and a push service worker. No private API response caching; dashboard use requires a network connection.
 - Passphrase hashing with scrypt, expiring HttpOnly sessions, request limits, same-origin mutation checks, and push-provider allowlisting.
-- Separately authenticated robot API, key rotation, and robot observation history.
+- Separately authenticated robot API, key rotation, robot observation history, and raw sensor telemetry (booleans plus TMP117 temperature) with server-computed durations.
 
 ## Habit presets
 
@@ -47,7 +53,7 @@ Choose a preset from **Add habit → Start with a preset** or the library on **M
 - Smoking
 - Poor lifting habits
 
-All logs currently count unwanted occurrences. Water means **missed water breaks**, and sleep time means **staying up past your intended bedtime**; these are not water-volume or sleep-duration measurements. Thresholds are reminder settings, not recommended health targets. The desk-sleep preset describes an optional spoken math/word challenge through ElevenLabs as **planned**; no voice API is connected yet.
+All logs currently count unwanted occurrences. Water means **missed water breaks**, and sleep time means **staying up past your intended bedtime**; these are not water-volume or sleep-duration measurements. Thresholds are reminder settings, not recommended health targets. The desk-sleep preset offers an optional spoken math check through ElevenLabs when the server has an API key; voice checks are not a substitute for rest.
 
 ## Phone + laptop notifications
 
@@ -64,6 +70,10 @@ Reminders are checked every 30 seconds while the server runs. Quiet hours suppre
 
 Reference: [Apple Web Push requirements](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/), [Web Push server guide](https://web.dev/articles/codelab-notifications-push-server).
 
+## Hardware sketch
+
+The supplied LCD-eye and three-servo demo is in [hardware/owlert_robot/owlert_robot.ino](hardware/owlert_robot/owlert_robot.ino). See [hardware/README.md](hardware/README.md) for its libraries and configured pins. This standalone sketch is separate from the website's robot API.
+
 ## Robot integration
 
 In **Devices & robot**, generate a robot key. Copy it immediately: only its hash is stored, and replacing it invalidates the previous key. The dialog lists habit IDs. The robot should send an event after its detector identifies an occurrence:
@@ -77,29 +87,47 @@ curl https://YOUR_HOST/api/robot/events \
 
 Events receive a server timestamp and `source: "robot"`. Paused/nonexistent habits reject events. Debounce observations in firmware: each accepted request represents one occurrence. Store the key securely on the device or a local gateway. There is no model inference in this endpoint.
 
+### Sensor telemetry
+
+The same robot key also authenticates raw sensor snapshots, one per detector poll:
+
+```sh
+curl https://YOUR_HOST/api/robot/sensors \
+  -H "Authorization: Bearer YOUR_ROBOT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"doomscrolling":true,"slouching":false,"sleeping":false,"drinkingWater":false,"tempRaw":2560}'
+```
+
+`doomscrolling`, `slouching`, `sleeping` and `drinkingWater` are point-in-time booleans; `tempRaw` is the SparkFun TMP117's raw 16-bit signed register value (firmware sends the register as-is, no conversion). The server, not the Arduino, is the source of truth for anything derived from a time series: `GET /api/sensors/latest` returns the latest snapshot (with `tempC` converted at the TMP117's 0.0078125 °C/LSB resolution) plus `doomscrollingDurationMs` and `sleepDurationMs`, each computed by walking back over the last 48 hours of readings to find how long that boolean has been continuously true. Keeping duration and unit conversion server-side means firmware only ever reports what it sees right now.
+
 ### Future work
 
-- **ElevenLabs:** add a server-side voice/conversation adapter that reads workspace context and logs observations through the existing event path. Keep provider credentials server-side. Voice UI is explicitly marked planned.
-- **Arduino:** add sensor input, a board-compatible inference model, confidence thresholds and debouncing, then forward observations via the robot API. Choose hardware/model after deciding which habits and sensors to detect.
+- **Arduino:** poll the detectors and the TMP117 on an interval and forward each snapshot to `/api/robot/sensors`; add confidence thresholds and debouncing before treating a boolean as reliable. Choose hardware/model after deciding which habits and sensors to detect.
 - Multi-user accounts, account recovery, a durable notification job queue, per-habit routing, and deployment-specific monitoring are future production work.
 
 ## API map
 
-| Endpoint                                             | Purpose                                                                      |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `GET /api/session`                                   | First-run / signed-in state                                                  |
-| `POST /api/session`                                  | Create first workspace or sign in                                            |
-| `DELETE /api/session`                                | Sign out this session                                                        |
-| `GET /api/state`                                     | Habits, 31 days of events, devices, settings, latest 50 notification results |
-| `POST /api/habits`, `PUT/DELETE /api/habits/:id`     | Manage habits                                                                |
-| `POST /api/events`, `DELETE /api/events/:id`         | Log/undo manual observations                                                 |
-| `PUT /api/settings`                                  | Timezone, quiet hours and automatic nudges                                   |
-| `POST /api/devices`, `PATCH/DELETE /api/devices/:id` | Register, pause or disconnect push devices                                   |
-| `POST /api/notifications/test`                       | Send test push to enabled devices                                            |
-| `POST /api/robot/key`                                | Generate/rotate robot bearer key                                             |
-| `POST /api/robot/events`                             | Bearer-authenticated robot observation                                       |
+| Endpoint                                             | Purpose                                                                            |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `GET /api/session`                                   | First-run / signed-in state                                                        |
+| `POST /api/session`                                  | Create first workspace or sign in                                                  |
+| `DELETE /api/session`                                | Sign out this session                                                              |
+| `GET /api/state`                                     | Habits, 31 days of events, devices, settings, latest 50 notification results       |
+| `POST /api/habits`, `PUT/DELETE /api/habits/:id`     | Manage habits                                                                      |
+| `POST /api/events`, `DELETE /api/events/:id`         | Log/undo manual observations                                                       |
+| `PUT /api/settings`                                  | Timezone, quiet hours and automatic nudges                                         |
+| `POST /api/devices`, `PATCH/DELETE /api/devices/:id` | Register, pause or disconnect push devices                                         |
+| `POST /api/notifications/test`                       | Send test push to enabled devices                                                  |
+| `POST /api/robot/key`                                | Generate/rotate robot bearer key                                                   |
+| `POST /api/robot/events`                             | Bearer-authenticated robot observation                                             |
+| `POST /api/robot/sensors`                            | Bearer-authenticated sensor snapshot (booleans + TMP117 raw temperature)           |
+| `GET /api/sensors/latest`                            | Latest snapshot, converted temperature, and computed doomscrolling/sleep durations |
+| `POST /api/voice/speak`                              | Session-authenticated ElevenLabs text-to-speech                                    |
+| `POST /api/voice/challenge`                          | Create a spoken wake-up check for an active habit                                  |
+| `GET /api/voice/challenge/:id/audio`                 | Speak a wake-up check prompt                                                       |
+| `POST /api/voice/challenge/:id/answer`               | Submit typed text or recorded audio for a wake-up check                            |
 
-All endpoints except session setup/status and robot ingestion require a session cookie. Robot keys grant event ingestion only. Subscription endpoints and private keys are never returned in workspace state.
+All endpoints except session setup/status and robot ingestion require a session cookie. Robot keys grant event and sensor ingestion only. Subscription endpoints and private keys are never returned in workspace state.
 
 ## Persistence, privacy and deployment
 
@@ -107,7 +135,7 @@ Data lives in `data/nudge.sqlite` (including sessions, generated push keys and s
 
 Only run one API instance: its in-process reminder scheduler is intentionally simple for a hackathon. A managed job queue is needed before scaling to multiple replicas. Rate limits use the direct connection IP; with a reverse proxy they can apply collectively. Configure deployment-specific trusted proxy handling before broader production use. Bootstrap the workspace before public access, use HTTPS and a strong passphrase, and share the passphrase only with trusted collaborators.
 
-This prototype supports habit awareness; it is not a medical device or diagnostic tool. Phone delivery is implemented but must be verified with your own subscribed devices on the HTTPS deployment. ElevenLabs and Arduino inference are not yet implemented.
+This prototype supports habit awareness; it is not a medical device or diagnostic tool. Phone delivery is implemented but must be verified with your own subscribed devices on the HTTPS deployment. Arduino inference is not yet implemented.
 
 ## Checks
 

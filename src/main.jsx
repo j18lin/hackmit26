@@ -17,6 +17,7 @@ import {
   Footprints,
   Hand,
   LayoutDashboard,
+  Mic,
   Leaf,
   Link2,
   LoaderCircle,
@@ -41,6 +42,7 @@ import {
 import "./styles.css";
 import "./owl-theme.css";
 import "./light-theme.css";
+import "./dashboard-design.css";
 import { ThemeProvider, ThemeSettings, ThemeToggle } from "./Theme.jsx";
 import { OwlCompanion, OwlIntro } from "./Owl.jsx";
 import { habitPresets, habitFromPreset } from "../shared/habit-presets.js";
@@ -92,11 +94,33 @@ async function api(url, method = "GET", body) {
   try {
     data = await response.json();
   } catch {
-    throw new Error("Cannot reach Nudge. Check that the server is running.");
+    throw new Error("Cannot reach Owlert. Check that the server is running.");
   }
   if (!response.ok)
     throw new Error(data.error || "Something went wrong. Please try again.");
   return data;
+}
+async function playApiAudio(url, method = "GET", body) {
+  const response = await fetch(`/api${url}`, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!response.ok) {
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      data = {};
+    }
+    throw new Error(data.error || "Something went wrong. Please try again.");
+  }
+  const audio = new Audio(URL.createObjectURL(await response.blob()));
+  audio.addEventListener("ended", () => URL.revokeObjectURL(audio.src), {
+    once: true,
+  });
+  await audio.play();
+  return audio;
 }
 function dateKey(date, timezone) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -121,7 +145,7 @@ function Logo({ small = false }) {
     <div className={`brand ${small ? "small" : ""}`}>
       <img src="/icon.svg" alt="" />
       <span>
-        nudge<span className="brand-dot">.</span>
+        owlert<span className="brand-dot">.</span>
       </span>
     </div>
   );
@@ -188,7 +212,8 @@ function App() {
   const [editing, setEditing] = useState(null),
     [connect, setConnect] = useState(false),
     [help, setHelp] = useState(false),
-    [robotKey, setRobotKey] = useState("");
+    [robotKey, setRobotKey] = useState(""),
+    [voiceCheck, setVoiceCheck] = useState(null);
   const [filter, setFilter] = useState("All habits"),
     [installPrompt, setInstallPrompt] = useState(null);
   async function load() {
@@ -445,15 +470,11 @@ function App() {
                 <span className={`icon-tile ${h.category}`}>
                   <Icon size={21} />
                 </span>
-                <span
-                  className={`pill ${!h.active ? "neutral" : reached ? "amber" : "green"}`}
-                >
-                  {!h.active
-                    ? "Paused"
-                    : reached
-                      ? "Time for a reset"
-                      : "On track"}
-                </span>
+                {(!h.active || reached) && (
+                  <span className={`pill ${!h.active ? "neutral" : "amber"}`}>
+                    {!h.active ? "Paused" : "Time for a reset"}
+                  </span>
+                )}
                 <button
                   className="icon-button habit-menu"
                   aria-label={`Edit ${h.name}`}
@@ -461,6 +482,21 @@ function App() {
                 >
                   <MoreHorizontal size={21} />
                 </button>
+                {state.voice?.configured && (
+                  <button
+                    className="icon-button habit-menu"
+                    aria-label={`Hear ${h.name} nudge`}
+                    onClick={() =>
+                      playApiAudio("/voice/speak", "POST", {
+                        text:
+                          h.description ||
+                          `Check in with your ${h.name.toLowerCase()} habit.`,
+                      }).catch((error) => setError(error.message))
+                    }
+                  >
+                    <Volume2 size={18} />
+                  </button>
+                )}
               </div>
               <h3>{h.name}</h3>
               <p>
@@ -494,6 +530,14 @@ function App() {
                 >
                   <Plus size={15} /> Log
                 </button>
+                {state.voice?.configured && h.category === "sleep" && (
+                  <button
+                    disabled={busy || !h.active}
+                    onClick={() => setVoiceCheck(h)}
+                  >
+                    <Mic size={15} /> Voice check
+                  </button>
+                )}
               </div>
             </article>
           );
@@ -623,17 +667,8 @@ function App() {
           <span className="sidebar-companion-icon">
             <img className="companion-mark" src="/icon.svg" alt="" />
           </span>
-          <strong>
-            A little companion.
-            <br />A big difference.
-          </strong>
-          <p>
-            A watchful little friend
-            <br />
-            for your everyday.
-          </p>
           <button onClick={() => setShowIntro(true)}>
-            Say hello to your owl <ArrowRight size={14} />
+            Meet your owl <ArrowRight size={14} />
           </button>
         </div>
         <div className="sidebar-bottom">
@@ -652,7 +687,7 @@ function App() {
             </span>
             <div>
               <strong>{state.name}’s workspace</strong>
-              <small>A little better, every day</small>
+              <small>Personal workspace</small>
             </div>
             <button
               className="icon-button"
@@ -712,13 +747,12 @@ function App() {
           <div className="page-heading">
             <div>
               <div className="eyebrow">
-                {page === "Overview" ? dateLabel : "SMALL STEPS. REAL CHANGE."}
+                {page === "Overview" ? dateLabel : "YOUR WORKSPACE"}
               </div>
               <h1>
                 {page === "Overview" ? (
                   <>
-                    {greeting}, {state.name}{" "}
-                    <span className="greeting-sun">☀</span>
+                    {greeting}, {state.name}.
                   </>
                 ) : (
                   page
@@ -728,13 +762,13 @@ function App() {
                 {
                   {
                     Overview:
-                      "A little more awareness. A little better, every day.",
+                      "Your habits, check-ins, and reminders at a glance.",
                     "My habits":
                       "Notice the patterns. Make room for better ones.",
                     Insights: "Your patterns, one check-in at a time.",
                     Notifications: "A gentle reminder, wherever you are.",
                     "Devices & robot": "One companion. All your devices.",
-                    Settings: "Make Nudge feel like you.",
+                    Settings: "Make Owlert feel like you.",
                   }[page]
                 }
               </p>
@@ -752,24 +786,14 @@ function App() {
             <>
               <section className="hero">
                 <div className="hero-copy">
-                  <span className="hero-label">
-                    <Moon size={14} /> A LITTLE WISER, ONE DAY AT A TIME
-                  </span>
-                  <h2>
-                    Small nudges.
-                    <br />
-                    Softer landings.
-                  </h2>
-                  <p>
-                    You don’t have to change everything at once.
-                    <br />
-                    Just notice, reset, and keep growing.
-                  </p>
+                  <span className="hero-label">TODAY’S CHECK-IN</span>
+                  <h2>Make a moment to reset.</h2>
+                  <p>Notice a habit? Log it and see where you stand today.</p>
                   <button
                     className="button hero-button"
                     onClick={() => navigation("My habits")}
                   >
-                    Let’s check in <ArrowRight size={16} />
+                    Review your habits <ArrowRight size={16} />
                   </button>
                 </div>
                 <button
@@ -779,20 +803,17 @@ function App() {
                 >
                   <OwlCompanion />
                 </button>
-                <div className="hero-note">
-                  <span className="status-dot" /> Your owl’s got your back
-                </div>
               </section>
               <div className="stats-grid">
                 <Stat
                   icon={Sprout}
-                  label="Habits you’re tracking"
+                  label="Active habits"
                   value={active.length}
-                  sub="One small step at a time"
+                  sub="Currently tracking"
                 />
                 <Stat
                   icon={Target}
-                  label="Within your daily limits"
+                  label="Within daily limits"
                   value={`${onTrack}/${active.length}`}
                   sub={
                     todayEvents.length
@@ -805,7 +826,7 @@ function App() {
                   icon={Activity}
                   label="Check-ins today"
                   value={todayEvents.length}
-                  sub="Every moment of awareness counts"
+                  sub="Occurrences logged"
                   tone="peach"
                 />
                 <Stat
@@ -822,7 +843,7 @@ function App() {
                     Your habits{" "}
                     <span className="count-badge">{active.length}</span>
                   </h2>
-                  <p>A little attention goes a long way.</p>
+                  <p>Today’s counts against your daily limits.</p>
                 </div>
                 <button
                   className="text-button"
@@ -840,22 +861,22 @@ function App() {
                 <section className="panel">
                   <div className="panel-heading">
                     <div>
-                      <h2>A week of awareness</h2>
-                      <p>Logged occurrences · fewer can mean progress</p>
+                      <h2>This week</h2>
+                      <p>Your logged habit occurrences</p>
                     </div>
                     <span className="subtle-chip">Last 7 days</span>
                   </div>
                   {chart()}
                   <div className="chart-caption">
                     <span className="legend-dot" /> Habit occurrences{" "}
-                    <span>Consistency begins with noticing.</span>
+                    <span>Based on your check-ins</span>
                   </div>
                 </section>
                 <section className="panel">
                   <div className="panel-heading">
                     <div>
                       <h2>Recent activity</h2>
-                      <p>Little moments that add up.</p>
+                      <p>Your latest check-ins</p>
                     </div>
                     <button
                       className="text-button"
@@ -891,8 +912,8 @@ function App() {
                 <Leaf size={19} />
                 <p>
                   Daily limits are personal intentions. Log an occurrence when
-                  you notice a habit; Nudge offers a gentle reset when you reach
-                  your limit.
+                  you notice a habit; Owlert offers a gentle reset when you
+                  reach your limit.
                 </p>
               </div>
               <section className="preset-library" aria-label="Habit presets">
@@ -1001,7 +1022,7 @@ function App() {
                       const url = URL.createObjectURL(blob);
                       const a = document.createElement("a");
                       a.href = url;
-                      a.download = `nudge-check-ins-${today}.json`;
+                      a.download = `owlert-check-ins-${today}.json`;
                       a.click();
                       setTimeout(() => URL.revokeObjectURL(url), 1000);
                     }}
@@ -1151,7 +1172,7 @@ function App() {
                   <p>
                     For phone notifications, use an HTTPS URL. On iPhone, open
                     in Safari, choose Share → Add to Home Screen, then open
-                    Nudge from that icon and connect.
+                    Owlert from that icon and connect.
                   </p>
                 </div>
               </section>
@@ -1208,8 +1229,8 @@ function App() {
                     not just a notification.
                   </h2>
                   <p>
-                    Voice conversations powered by ElevenLabs, and on-device
-                    habit detection with Arduino, are next on our roadmap.
+                    Voice nudges and wake-up checks are powered by ElevenLabs
+                    and enabled by setting ELEVENLABS_API_KEY on the server.
                   </p>
                   <div className="roadmap-row">
                     <CheckCheck size={18} />
@@ -1224,7 +1245,11 @@ function App() {
                   <div className="roadmap-row">
                     <Volume2 size={18} />
                     <span>ElevenLabs voice companion</span>
-                    <span className="pill neutral">Planned</span>
+                    {state.voice?.configured ? (
+                      <span className="pill green">Connected</span>
+                    ) : (
+                      <span className="pill neutral">Add API key</span>
+                    )}
                   </div>
                   <div className="roadmap-row">
                     <Bot size={18} />
@@ -1294,6 +1319,15 @@ function App() {
           busy={busy}
         />
       )}
+      {voiceCheck && (
+        <VoiceCheckModal
+          habit={voiceCheck}
+          onClose={() => setVoiceCheck(null)}
+          act={act}
+          reload={load}
+          setError={setError}
+        />
+      )}
       {help && (
         <Modal title="Small steps start here" onClose={() => setHelp(false)}>
           <div className="help-content">
@@ -1315,8 +1349,9 @@ function App() {
               Insights, and set quiet hours under Settings.
             </p>
             <div className="info-strip">
-              This is a habit-awareness prototype, not a medical device. The
-              robot and voice integrations are future features.
+              This is a habit-awareness prototype, not a medical device. Arduino
+              detection is a future feature; voice needs an ElevenLabs key on
+              the server.
             </div>
           </div>
         </Modal>
@@ -1452,6 +1487,216 @@ function DeviceList({ state, busy, act }) {
       <h3>Your nudges need a home.</h3>
       <p>Connect this device to receive your first reminder.</p>
     </div>
+  );
+}
+function VoiceCheckModal({ habit, onClose, act, reload, setError }) {
+  const [challenge, setChallenge] = useState(null);
+  const [result, setResult] = useState(null);
+  const [answer, setAnswer] = useState("");
+  const [seconds, setSeconds] = useState(0);
+  const [recording, setRecording] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const recorder = useRef(null);
+  const stream = useRef(null);
+  const chunks = useRef([]);
+
+  useEffect(() => {
+    let mounted = true;
+    act(() => api("/voice/challenge", "POST", { habitId: habit.id })).then(
+      async (data) => {
+        if (!mounted || !data) return;
+        setChallenge(data);
+        setLoading(false);
+        setSeconds(
+          Math.max(
+            0,
+            Math.ceil((new Date(data.expiresAt) - Date.now()) / 1000),
+          ),
+        );
+        playApiAudio(`/voice/challenge/${data.id}/audio`).catch(() => {});
+      },
+    );
+    return () => {
+      mounted = false;
+      stream.current?.getTracks().forEach((track) => track.stop());
+      if (recorder.current?.state === "recording") recorder.current.stop();
+    };
+  }, [habit.id]);
+
+  useEffect(() => {
+    if (!challenge) return;
+    const timer = setInterval(() => {
+      setSeconds(
+        Math.max(
+          0,
+          Math.ceil((new Date(challenge.expiresAt) - Date.now()) / 1000),
+        ),
+      );
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [challenge]);
+
+  async function submitText(event) {
+    event.preventDefault();
+    if (!challenge || !answer.trim() || result) return;
+    const data = await act(() =>
+      api(`/voice/challenge/${challenge.id}/answer`, "POST", {
+        answer: answer.trim(),
+      }),
+    );
+    if (data) {
+      setResult(data);
+      await reload();
+    }
+  }
+
+  async function submitAudio(blob) {
+    const response = await fetch(
+      `/api/voice/challenge/${challenge.id}/answer`,
+      {
+        method: "POST",
+        headers: { "Content-Type": blob.type || "audio/webm" },
+        body: blob,
+      },
+    );
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      data = {};
+    }
+    if (!response.ok)
+      throw new Error(data.error || "Something went wrong. Please try again.");
+    return data;
+  }
+
+  async function startRecording(event) {
+    event.preventDefault();
+    if (
+      !challenge ||
+      result ||
+      recording ||
+      typeof MediaRecorder === "undefined"
+    )
+      return;
+    try {
+      stream.current = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      });
+      const supported =
+        typeof MediaRecorder.isTypeSupported === "function" &&
+        MediaRecorder.isTypeSupported("audio/webm");
+      recorder.current = supported
+        ? new MediaRecorder(stream.current, { mimeType: "audio/webm" })
+        : new MediaRecorder(stream.current);
+      chunks.current = [];
+      recorder.current.ondataavailable = (event) => {
+        if (event.data.size) chunks.current.push(event.data);
+      };
+      recorder.current.onstop = async () => {
+        const blob = new Blob(chunks.current, {
+          type: recorder.current?.mimeType || "audio/webm",
+        });
+        stream.current?.getTracks().forEach((track) => track.stop());
+        stream.current = null;
+        try {
+          const data = await act(() => submitAudio(blob));
+          if (data) {
+            setResult(data);
+            await reload();
+          }
+        } catch (error) {
+          setError(error.message);
+        }
+      };
+      recorder.current.start();
+      setRecording(true);
+    } catch (error) {
+      stream.current?.getTracks().forEach((track) => track.stop());
+      stream.current = null;
+      setError(error.message);
+    }
+  }
+
+  function stopRecording() {
+    if (recorder.current?.state === "recording") {
+      setRecording(false);
+      recorder.current.stop();
+    }
+  }
+
+  return (
+    <Modal title={`Voice check · ${habit.name}`} onClose={onClose}>
+      <div className="voice-check modal-form">
+        {loading ? (
+          <LoaderCircle className="spin" />
+        ) : (
+          <>
+            <p className="muted">
+              {challenge?.prompt}
+              <small>
+                {seconds ? `${seconds}s remaining` : "Challenge expired"}
+              </small>
+            </p>
+            <button
+              className="button secondary"
+              disabled={!challenge || Boolean(result)}
+              onClick={() =>
+                playApiAudio(`/voice/challenge/${challenge.id}/audio`).catch(
+                  (error) => setError(error.message),
+                )
+              }
+            >
+              <Volume2 size={16} /> Play again
+            </button>
+            <form onSubmit={submitText}>
+              <label>
+                Type your answer
+                <input
+                  value={answer}
+                  onChange={(event) => setAnswer(event.target.value)}
+                  placeholder="e.g. twelve"
+                  disabled={Boolean(result)}
+                />
+              </label>
+              <button
+                className="button primary"
+                disabled={!answer.trim() || Boolean(result)}
+              >
+                Answer
+              </button>
+            </form>
+            {typeof MediaRecorder !== "undefined" && (
+              <button
+                className={`button ${recording ? "primary recording" : "secondary"}`}
+                disabled={!challenge || Boolean(result)}
+                onPointerDown={startRecording}
+                onPointerUp={stopRecording}
+                onPointerCancel={stopRecording}
+                onPointerLeave={stopRecording}
+              >
+                <Mic size={16} />{" "}
+                {recording ? "Release to answer" : "Hold to speak"}
+              </button>
+            )}
+            {result && (
+              <div
+                className={`voice-result ${result.correct ? "correct" : "incorrect"}`}
+              >
+                <strong>{result.message}</strong>
+                {!result.correct && (
+                  <span>
+                    Heard “{result.heard || "nothing"}”; expected{" "}
+                    <strong>{result.expected}</strong>. An occurrence was
+                    logged.
+                  </span>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </Modal>
   );
 }
 function HabitModal({ habit, existingHabits, onClose, busy, act }) {
@@ -1671,7 +1916,7 @@ function ConnectModal({ publicKey, onClose, act, busy }) {
         !("Notification" in window)
       )
         throw new Error(
-          "Push is unavailable here. On iPhone, add Nudge to your Home Screen and open it there. Otherwise try Chrome, Edge, Firefox, or Safari.",
+          "Push is unavailable here. On iPhone, add Owlert to your Home Screen and open it there. Otherwise try Chrome, Edge, Firefox, or Safari.",
         );
       const permission = await Notification.requestPermission();
       if (permission !== "granted")
@@ -1733,7 +1978,7 @@ function ConnectModal({ publicKey, onClose, act, busy }) {
         <div className="info-strip">
           <Smartphone size={22} />
           <p>
-            iPhone: Share → Add to Home Screen, then open Nudge from its icon
+            iPhone: Share → Add to Home Screen, then open Owlert from its icon
             before connecting. Phone push requires HTTPS.
           </p>
         </div>
@@ -1845,7 +2090,7 @@ function Settings({ state, busy, act, installPrompt, setInstallPrompt }) {
           <Smartphone />
         </span>
         <h2>A home for your habits.</h2>
-        <p>Install Nudge for easy access and a calmer, focused experience.</p>
+        <p>Install Owlert for easy access and a calmer, focused experience.</p>
         {installPrompt ? (
           <button
             className="button secondary"
@@ -1855,7 +2100,7 @@ function Settings({ state, busy, act, installPrompt, setInstallPrompt }) {
               setInstallPrompt(null);
             }}
           >
-            Install Nudge <Download size={16} />
+            Install Owlert <Download size={16} />
           </button>
         ) : (
           <div className="info-strip">

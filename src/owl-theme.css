@@ -1,68 +1,68 @@
-/* Nightfall: the shared purple palette for every Nudge surface. */
+/* Base owl palette; dashboard-design.css supplies Owlert's current theme. */
 :root {
   color-scheme: dark;
-  color: #ede8f6;
-  background: #110e19;
-  --green: #a783e9;
-  --muted: #a49ab6;
-  --border: #30283f;
-  --bg: #110e19;
-  --ink: #eee9f7;
-  --soft: #aea2c0;
-  --surface: #1b1726;
-  --purple: #bc9afa;
+  color: #f4f6ff;
+  background: #081028;
+  --green: #cb3cff;
+  --muted: #8992b8;
+  --border: #1e2745;
+  --bg: #081028;
+  --ink: #f4f6ff;
+  --soft: #aeb9e1;
+  --surface: #0b1739;
+  --purple: #cb3cff;
 }
 body {
   background: var(--bg);
 }
 ::selection {
-  background: #8861bd80;
+  background: #7f25fb80;
   color: white;
 }
 .sidebar,
 .topbar {
-  background: #15111f;
+  background: #0a1230;
   border-color: var(--border);
 }
 .brand {
-  color: #f1eafa;
+  color: #f4f6ff;
 }
 .brand-dot {
-  color: #b98aef;
+  color: #cb3cff;
 }
 .brand img {
   border-radius: 11px;
 }
 .workspace-label {
-  color: #80718f;
+  color: #7c86ac;
 }
 nav button,
 .sidebar-bottom > button {
-  color: #afa1c1;
+  color: #aeb9e1;
 }
 nav button:hover,
 .sidebar-bottom > button:hover {
-  background: #211a2e;
+  background: #101c42;
 }
 nav button.selected,
 .sidebar-bottom > button.selected {
-  background: #2c2140;
-  color: #d4b7ff;
+  background: rgba(203, 60, 255, 0.14);
+  color: #cb3cff;
 }
 nav button.selected {
-  box-shadow: inset 3px 0 #b593ee;
+  box-shadow: inset 3px 0 #cb3cff;
 }
 .nav-count {
-  background: #47315f;
-  color: #dbc4ff;
+  background: rgba(203, 60, 255, 0.18);
+  color: #e7b8ff;
 }
 .sidebar-companion {
-  background: linear-gradient(145deg, #302042, #201a2b);
-  border-color: #443153;
+  background: linear-gradient(145deg, #131b3e, #0d1330);
+  border-color: #232a46;
 }
 .sidebar-companion-icon {
-  background: #413055;
-  color: #d0acf9;
+  background: rgba(203, 60, 255, 0.16);
+  color: #cb3cff;
 }
 .companion-mark {
   width: 37px;
@@ -70,79 +70,79 @@ nav button.selected {
   border-radius: 10px;
 }
 .sidebar-companion p {
-  color: #a99bb9;
+  color: #aeb9e1;
 }
 .sidebar-companion button {
-  border-color: #493559;
-  color: #ceb1f3;
+  border-color: #2a3358;
+  color: #cb3cff;
 }
 .profile small {
-  color: #a094af;
+  color: #7c86ac;
 }
 .avatar {
-  background: #3b2d4b;
-  color: #dec3fc;
+  background: rgba(203, 60, 255, 0.18);
+  color: #e7b8ff;
 }
 .breadcrumb {
-  color: #9d90af;
+  color: #7c86ac;
 }
 .breadcrumb strong {
-  color: #d1c5e0;
+  color: #f4f6ff;
 }
 .live-status {
-  color: #b2a2c3;
+  color: #aeb9e1;
 }
 .status-dot {
-  background: #b895ee;
-  box-shadow: 0 0 0 3px #a783e918;
+  background: #cb3cff;
+  box-shadow: 0 0 0 3px #cb3cff18;
 }
 .icon-button {
-  color: #a99abb;
+  color: #aeb9e1;
 }
 .icon-button:hover {
-  background: #352644;
-  color: #ead9ff;
+  background: #17204a;
+  color: #f0d6ff;
 }
 .eyebrow {
-  color: #a393b5;
+  color: #8992b8;
 }
 .page-heading p,
 .section-heading p {
-  color: #aea0bd;
+  color: #aeb9e1;
 }
 .greeting-sun {
-  color: #e1be87;
+  color: #ffb547;
 }
 .page-heading h1 {
-  color: #f1eafa;
+  color: #f4f6ff;
 }
 .button.primary {
-  background: #ac84e7;
-  color: #1c102d;
-  box-shadow: 0 3px 15px #a577e718;
+  background: linear-gradient(128deg, #cb3cff 20%, #7f25fb 68%);
+  color: #ffffff;
+  box-shadow: 0 8px 24px rgba(203, 60, 255, 0.35);
   font-weight: 700;
 }
 .button.primary:hover {
-  background: #c19ef6;
+  background: linear-gradient(128deg, #d65cff 20%, #8b3efb 68%);
 }
 .button.secondary {
-  background: #251d32;
-  color: #dbc9ed;
-  border-color: #463451;
+  background: #0f1730;
+  color: #c7d0f0;
+  border-color: #2a3358;
 }
 .button.secondary:hover {
-  background: #342442;
+  background: #17204a;
 }
 .button:focus-visible,
 button:focus-visible,
 a:focus-visible {
-  outline-color: #d9baff;
+  outline-color: #cb3cff;
 }
 .hero {
   background:
-    radial-gradient(ellipse at 78% 50%, #784ba340, transparent 55%),
-    linear-gradient(110deg, #2c1b3e, #20162e);
-  border: 1px solid #493258;
+    radial-gradient(ellipse at 78% 50%, #7f25fb40, transparent 55%),
+    linear-gradient(110deg, #101b3f, #0a1230);
+  border: 1px solid #232a46;
   min-height: 278px;
   isolation: isolate;
 }
@@ -151,31 +151,31 @@ a:focus-visible {
   position: absolute;
   inset: 0;
   background-image:
-    radial-gradient(circle at 69% 19%, #d8b5ff80 1px, transparent 2px),
-    radial-gradient(circle at 92% 40%, #d8b5ff80 1px, transparent 2px),
-    radial-gradient(circle at 64% 79%, #d8b5ff50 1px, transparent 2px);
+    radial-gradient(circle at 69% 19%, #cb3cff66 1px, transparent 2px),
+    radial-gradient(circle at 92% 40%, #cb3cff66 1px, transparent 2px),
+    radial-gradient(circle at 64% 79%, #cb3cff44 1px, transparent 2px);
   pointer-events: none;
   z-index: -1;
 }
 .hero h2 {
-  color: #ecddfa;
+  color: #f4f6ff;
   font-size: 34px;
 }
 .hero-label {
-  color: #c8a6e9;
+  color: #e7b8ff;
 }
 .hero p {
-  color: #b6a2c7;
+  color: #aeb9e1;
 }
 .hero-button {
-  background: #ba96e9;
-  color: #281535;
+  background: #cb3cff;
+  color: #ffffff;
 }
 .hero-button:hover {
-  background: #d5b5f8;
+  background: #d65cff;
 }
 .hero-note {
-  color: #b5a0ca;
+  color: #aeb9e1;
 }
 .hero-owl-button {
   margin-left: auto;
@@ -196,368 +196,368 @@ a:focus-visible {
   border-color: var(--border);
 }
 .stat-label {
-  color: #b2a3c3;
+  color: #aeb9e1;
 }
 .stat-card strong {
-  color: #f1e7ff;
+  color: #f4f6ff;
 }
 .stat-card small {
-  color: #a393b4;
+  color: #7c86ac;
 }
 .habit-card:hover {
-  border-color: #745391;
-  box-shadow: 0 6px 24px #07050c40;
+  border-color: #3a4570;
+  box-shadow: 0 6px 24px #01051140;
 }
 .habit-card > p {
-  color: #b0a0c1;
+  color: #aeb9e1;
 }
 .habit-count strong span,
 .habit-count > span {
-  color: #ac9bbd;
+  color: #8992b8;
 }
 .habit-bottom {
-  border-color: #35283f;
+  border-color: #1e2745;
 }
 .habit-bottom > span {
-  color: #ac9bbd;
+  color: #8992b8;
 }
 .habit-bottom button {
-  background: #322442;
-  color: #d3b5f5;
+  background: rgba(203, 60, 255, 0.14);
+  color: #cb3cff;
 }
 .habit-bottom button:hover {
-  background: #4a325f;
+  background: rgba(203, 60, 255, 0.24);
 }
 .progress-track {
-  background: #30253d;
+  background: #1b2447;
 }
 .progress-track > span {
-  background: #af8ed9;
+  background: #cb3cff;
 }
 .progress-track > span.over {
-  background: #d5a66d;
+  background: #ffb547;
 }
 .icon-tile,
 .green,
 .posture {
-  background: #342444;
-  color: #c8a2ee;
+  background: rgba(203, 60, 255, 0.16);
+  color: #cb3cff;
 }
 .mint,
 .hydration,
 .movement {
-  background: #24283f;
-  color: #b0addf;
+  background: rgba(56, 189, 248, 0.16);
+  color: #38bdf8;
 }
 .peach,
 .mindfulness {
-  background: #3b2637;
-  color: #e0a9c4;
+  background: rgba(255, 107, 155, 0.16);
+  color: #ff6b9b;
 }
 .lavender,
 .screen,
 .icon-tile.sleep {
-  background: #2e2344;
-  color: #bfa0ef;
+  background: rgba(203, 60, 255, 0.16);
+  color: #cb3cff;
 }
 .icon-tile.smoking {
-  background: #3b2730;
-  color: #d9a19f;
+  background: rgba(255, 90, 101, 0.16);
+  color: #ff5a65;
 }
 .icon-tile.lifting {
-  background: #27253f;
-  color: #a7adeb;
+  background: rgba(56, 189, 248, 0.16);
+  color: #38bdf8;
 }
 .icon-tile.posture {
-  background: #38224f;
-  color: #deb9ff;
+  background: rgba(155, 107, 255, 0.16);
+  color: #9b6bff;
 }
 .icon-tile.screen {
-  background: #30234a;
-  color: #d8c0ff;
+  background: rgba(203, 60, 255, 0.16);
+  color: #cb3cff;
 }
 .icon-tile.mindfulness {
-  background: #482439;
-  color: #ffbad2;
+  background: rgba(255, 107, 155, 0.16);
+  color: #ff6b9b;
 }
 .icon-tile.movement {
-  background: #153d36;
-  color: #a7ead9;
+  background: rgba(20, 202, 116, 0.16);
+  color: #14ca74;
 }
 .count-badge {
-  background: #30213e;
-  border-color: #4a325d;
-  color: #c0a1df;
+  background: rgba(203, 60, 255, 0.14);
+  border-color: rgba(203, 60, 255, 0.3);
+  color: #cb3cff;
 }
 .pill.green {
-  background: #30263d;
-  color: #cfb2ef;
+  background: rgba(20, 202, 116, 0.14);
+  color: #14ca74;
 }
 .pill.green:before {
-  background: #bb94e5;
+  background: #14ca74;
 }
 .pill.neutral {
-  background: #2c2734;
-  color: #b5a7c5;
+  background: #17204a;
+  color: #aeb9e1;
 }
 .pill.amber {
-  background: #3e3027;
-  color: #e2be86;
+  background: rgba(255, 181, 71, 0.16);
+  color: #ffb547;
 }
 .text-button {
-  color: #bf9edc;
+  color: #cb3cff;
 }
 .text-button:hover {
-  color: #e4c5ff;
+  color: #e7b8ff;
 }
 .subtle-chip {
-  border-color: #473752;
-  color: #b6a2ca;
+  border-color: #2a3358;
+  color: #aeb9e1;
 }
 .panel-heading p {
-  color: #ac9bbd;
+  color: #8992b8;
 }
 .chart-grid,
 .chart-column > span {
-  color: #a797b8;
+  color: #7c86ac;
 }
 .chart-grid span:after {
-  border-color: #392d46;
+  border-color: #1e2745;
 }
 .chart-bar {
-  background: #503765;
+  background: #253061;
 }
 .chart-bar.current {
-  background: #b288e4;
+  background: #cb3cff;
 }
 .chart-bar b,
 .chart-column > span.today-label {
-  color: #d1b0fa;
+  color: #e7b8ff;
 }
 .chart-caption {
-  border-color: #35283f;
-  color: #b4a1c8;
+  border-color: #1e2745;
+  color: #aeb9e1;
 }
 .chart-caption > span:last-child {
-  color: #91809f;
+  color: #7c86ac;
 }
 .legend-dot {
-  background: #b288e4;
+  background: #cb3cff;
 }
 .activity-row {
-  border-color: #34283f;
+  border-color: #1e2745;
 }
 .activity-row div > span,
 .activity-row time {
-  color: #a493b4;
+  color: #8992b8;
 }
 .activity-row strong {
-  color: #e2d4ef;
+  color: #f4f6ff;
 }
 .empty {
-  color: #bc9cda;
+  color: #8992b8;
 }
 .empty h3 {
-  color: #d4bbea;
+  color: #f4f6ff;
 }
 .empty p {
-  color: #b1a0c0;
+  color: #aeb9e1;
 }
 .info-strip {
-  background: #241b30;
-  border-color: #42304e;
-  color: #b9a7cc;
+  background: #0f1730;
+  border-color: #2a3358;
+  color: #aeb9e1;
 }
 .info-strip p {
-  color: #b9a7cc;
+  color: #aeb9e1;
 }
 .filter-tabs {
-  background: #201a2b;
+  background: #0a1230;
 }
 .filter-tabs button {
-  color: #a997bb;
+  color: #8992b8;
 }
 .filter-tabs button.active {
-  background: #3b294d;
-  color: #e8caff;
+  background: rgba(203, 60, 255, 0.16);
+  color: #cb3cff;
   box-shadow: none;
 }
 .notification-hero {
-  background: #2b1d3a;
-  border-color: #483255;
+  background: #0f1730;
+  border-color: #2a3358;
 }
 .notification-hero p {
-  color: #b8a4c8;
+  color: #aeb9e1;
 }
 .notification-hero > .icon-tile {
-  background: #49305c;
-  color: #dbb4ff;
+  background: rgba(203, 60, 255, 0.2);
+  color: #cb3cff;
 }
 .device-row {
-  border-color: #35283f;
+  border-color: #1e2745;
 }
 .device-row small {
-  color: #b5a1c7;
+  color: #8992b8;
 }
 .toggle {
-  background: #473b52;
+  background: #232a46;
 }
 .toggle.on {
-  background: #a17ace;
+  background: #7f25fb;
 }
 .toggle span {
-  background: #eee2ff;
+  background: #ffffff;
 }
 .quiet-display span {
-  color: #a58fb9;
+  color: #8992b8;
 }
 .muted {
-  color: #b0a0c0;
+  color: #aeb9e1;
 }
 .future-panel {
-  background: linear-gradient(150deg, #281c37, #1b1726);
+  background: linear-gradient(150deg, #101b3f, #0a1230);
 }
 .robot-panel > p,
 .future-panel > p {
-  color: #b4a1c6;
+  color: #aeb9e1;
 }
 .future-panel .eyebrow {
-  color: #c8a0ed;
+  color: #cb3cff;
 }
 .roadmap-row {
-  border-color: #3b2a49;
-  color: #b9a8ca;
+  border-color: #1e2745;
+  color: #aeb9e1;
 }
 .setting-line {
   border-color: var(--border);
 }
 .setting-line p,
 .settings-form small {
-  color: #ac9abb;
+  color: #8992b8;
 }
 .install-panel > p {
-  color: #b4a0c5;
+  color: #aeb9e1;
 }
 .preset-card:hover:not(:disabled) {
-  border-color: #8f65b2;
-  background: #261c33;
+  border-color: #cb3cff;
+  background: #101c42;
 }
 .preset-copy > span,
 .preset-hint {
-  color: #b7a4c8;
+  color: #aeb9e1;
 }
 .preset-copy small,
 .preset-future {
-  color: #c8a2ee;
+  color: #cb3cff;
 }
 .preset-card > svg {
-  color: #c09bdf;
+  color: #cb3cff;
 }
 .preset-picker {
-  background: #231a2f;
-  border-color: #42304f;
+  background: #0f1730;
+  border-color: #2a3358;
 }
 .preset-picker small {
-  color: #b19cbf;
+  color: #8992b8;
 }
 label {
-  color: #c1afcf;
+  color: #aeb9e1;
 }
 input,
 select,
 textarea {
-  background: #17121f;
-  border-color: #473453;
-  color: #e4d5f0;
+  background: #0a0f24;
+  border-color: #343b4f;
+  color: #f4f6ff;
 }
 input:focus,
 select:focus,
 textarea:focus {
-  border-color: #b98ae5;
-  box-shadow: 0 0 0 3px #ac7fd320;
+  border-color: #cb3cff;
+  box-shadow: 0 0 0 3px #cb3cff20;
 }
 input::placeholder,
 textarea::placeholder {
-  color: #877393;
+  color: #7c86ac;
 }
 .checkbox-label input {
-  accent-color: #ba91e9;
+  accent-color: #cb3cff;
 }
 .checkbox-label {
-  color: #c8b2d9;
+  color: #aeb9e1;
 }
 dialog {
-  background: #1e1729;
-  color: #efe2fa;
-  border-color: #503660;
+  background: #0d1533;
+  color: #f4f6ff;
+  border-color: #2a3358;
   box-shadow: 0 30px 90px #0009;
 }
 dialog::backdrop {
-  background: #080510b8;
+  background: #040714b8;
 }
 .modal-head,
 .modal-actions {
-  border-color: #3e2c4c;
+  border-color: #1e2745;
 }
 .help-content p {
-  color: #c0adce;
+  color: #aeb9e1;
 }
 .help-content pre {
-  background: #140f1c;
-  border-color: #3c2a49;
-  color: #dcc4ef;
+  background: #0a0f24;
+  border-color: #2a3358;
+  color: #e7b8ff;
 }
 .danger {
-  color: #e7a7b6;
+  color: #ff5a65;
 }
 .form-error,
 .error-banner {
-  background: #3b202f;
-  border-color: #663749;
-  color: #f0b1c4;
+  background: rgba(255, 90, 101, 0.14);
+  border-color: rgba(255, 90, 101, 0.4);
+  color: #ff9aa2;
 }
 .toast {
-  background: #432a59;
-  border: 1px solid #735189;
-  color: #f1e1ff;
-  box-shadow: 0 6px 30px #09050f70;
+  background: #17204a;
+  border: 1px solid #3a4570;
+  color: #f4f6ff;
+  box-shadow: 0 6px 30px #02040c70;
 }
 .toast > button,
 .toast > .icon-button {
-  color: #d4b2ed;
+  color: #cb3cff;
 }
 footer {
-  color: #8f7c9f;
+  color: #7c86ac;
 }
 .auth-page {
   background:
-    radial-gradient(ellipse at 20% 50%, #39204960, transparent 65%), #110e19;
+    radial-gradient(ellipse at 20% 50%, #7f25fb33, transparent 65%), #081028;
 }
 .auth-card {
-  background: #1d1629;
-  border-color: #3d2b4c;
-  box-shadow: 0 16px 60px #05030840;
+  background: #0b1739;
+  border-color: #232a46;
+  box-shadow: 0 16px 60px #01030840;
 }
 .auth-grid h1 {
-  color: #f0e4fb;
+  color: #f4f6ff;
 }
 .auth-grid h1 em {
-  color: #bf96f0;
+  color: #cb3cff;
 }
 .auth-grid .eyebrow {
-  color: #b397c7;
+  color: #8992b8;
 }
 .auth-grid > div > p,
 .auth-card > p {
-  color: #b5a1c7;
+  color: #aeb9e1;
 }
 .auth-foot,
 .auth-card small {
-  color: #b7a2c7;
+  color: #8992b8;
 }
 .auth-caption,
 .auth-top > span {
-  color: #9a82ac;
+  color: #7c86ac;
 }
 
 /* The owl's illustration and the interactive welcome. */
@@ -579,21 +579,21 @@ footer {
   position: absolute;
   width: 208px;
   height: 208px;
-  border: 1px solid #ab7bd12b;
+  border: 1px solid #cb3cff2b;
   border-radius: 50%;
-  background: radial-gradient(circle, #a56ad421, transparent 70%);
+  background: radial-gradient(circle, #cb3cff21, transparent 70%);
   z-index: -1;
 }
 .owl-halo:before {
   content: "";
   position: absolute;
   inset: -19px;
-  border: 1px dashed #be8bef1c;
+  border: 1px dashed #cb3cff1c;
   border-radius: 50%;
 }
 .owl-spark {
   position: absolute;
-  color: #ceb0ef;
+  color: #e7b8ff;
 }
 .owl-spark.one {
   left: 22px;
@@ -636,9 +636,9 @@ footer {
   min-height: 100dvh;
   overflow: auto;
   background:
-    radial-gradient(ellipse at 50% 63%, #44285f66, transparent 48%),
-    radial-gradient(ellipse at 50% -15%, #3b235459, transparent 62%), #100c19;
-  color: #f1eafa;
+    radial-gradient(ellipse at 50% 63%, #7f25fb40, transparent 48%),
+    radial-gradient(ellipse at 50% -15%, #cb3cff33, transparent 62%), #081028;
+  color: #f4f6ff;
   isolation: isolate;
 }
 .intro-header {
@@ -657,16 +657,16 @@ footer {
   height: 32px;
 }
 .intro-skip {
-  color: #a795b8;
+  color: #aeb9e1;
   font-size: 11px;
   padding: 10px 12px;
-  border: 1px solid #473250;
+  border: 1px solid #2a3358;
   border-radius: 20px;
-  background: #21162b50;
+  background: #0a123080;
 }
 .intro-skip:hover {
-  background: #3b2550;
-  color: #e4c7ff;
+  background: #17204a;
+  color: #e7b8ff;
 }
 .intro-content {
   position: relative;
@@ -681,7 +681,7 @@ footer {
 .intro-eyebrow {
   font-size: 10px;
   letter-spacing: 2.5px;
-  color: #bda2d9;
+  color: #aeb9e1;
   display: flex;
   align-items: center;
   gap: 9px;
@@ -694,12 +694,12 @@ footer {
   margin: 19px 0 13px;
 }
 .intro-content h1 span {
-  background: linear-gradient(100deg, #e7cffb, #ae86dc);
+  background: linear-gradient(100deg, #e7b8ff, #cb3cff);
   background-clip: text;
   color: transparent;
 }
 .intro-content > p {
-  color: #ad98c2;
+  color: #aeb9e1;
   font-size: 13px;
   line-height: 1.9;
 }
@@ -715,7 +715,7 @@ footer {
 }
 .intro-orbit {
   position: absolute;
-  border: 1px solid #9c72c222;
+  border: 1px solid #cb3cff22;
   border-radius: 50%;
   pointer-events: none;
 }
@@ -732,7 +732,7 @@ footer {
 }
 .intro-star {
   position: absolute;
-  color: #dcc197;
+  color: #ffb547;
   pointer-events: none;
 }
 .star-a {
@@ -744,7 +744,7 @@ footer {
   right: 28px;
   top: 42px;
   font-size: 32px;
-  color: #c8a0f0;
+  color: #cb3cff;
 }
 .star-c {
   right: 57px;
@@ -762,7 +762,7 @@ footer {
   -webkit-tap-highlight-color: transparent;
 }
 .owl-launch:focus-visible {
-  outline: 2px solid #ddbdff;
+  outline: 2px solid #cb3cff;
   outline-offset: 8px;
 }
 .owl-launch:disabled {
@@ -778,11 +778,11 @@ footer {
 .owl-launch .owl-illustration {
   width: 100%;
   height: 100%;
-  filter: drop-shadow(0 0 24px #9d66df30);
+  filter: drop-shadow(0 0 24px #cb3cff30);
   transition: filter 0.3s;
 }
 .owl-launch:hover:not(:disabled) .owl-illustration {
-  filter: drop-shadow(0 0 30px #b883f36b);
+  filter: drop-shadow(0 0 30px #cb3cff6b);
 }
 .owl-launch:hover:not(:disabled) .owl-wing-left {
   transform: rotate(9deg);
@@ -795,7 +795,7 @@ footer {
   bottom: 7px;
   width: 150px;
   height: 13px;
-  background: #b580ec25;
+  background: #cb3cff25;
   filter: blur(10px);
   border-radius: 50%;
 }
@@ -805,15 +805,15 @@ footer {
   gap: 9px;
   font-size: 12px;
   letter-spacing: 0.2px;
-  color: #d2b7eb;
+  color: #aeb9e1;
   margin-top: 6px;
 }
 .intro-click-ring {
   height: 7px;
   width: 7px;
-  background: #be91ef;
+  background: #cb3cff;
   border-radius: 50%;
-  box-shadow: 0 0 0 4px #b68cdb18;
+  box-shadow: 0 0 0 4px #cb3cff18;
 }
 .intro-caption {
   display: flex;
@@ -821,7 +821,7 @@ footer {
   gap: 7px;
   font-size: 8px;
   letter-spacing: 1.6px;
-  color: #806991;
+  color: #7c86ac;
   margin-top: 26px;
 }
 .intro-footer {
@@ -830,9 +830,9 @@ footer {
   max-width: none;
   margin: 25px 42px 0;
   padding: 20px 0 24px;
-  border-top: 1px solid #50366035;
+  border-top: 1px solid #2a335880;
   font-size: 10px;
-  color: #8c749e;
+  color: #7c86ac;
 }
 .intro-footer > span:last-child {
   font-size: 8px;
@@ -848,7 +848,7 @@ footer {
 .night-stars i {
   position: absolute;
   border-radius: 50%;
-  background: #d5b8f4;
+  background: #c9d3ff;
   opacity: 0.3;
   animation: starTwinkle 5s ease-in-out infinite;
 }
@@ -1031,7 +1031,7 @@ footer {
     letter-spacing: 0.2px;
   }
   .habit-card > p {
-    color: #b0a0c1;
+    color: #aeb9e1;
   }
   .auth-grid > div > .owl-companion {
     display: none;

@@ -1,27 +1,27 @@
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f8f5fc" />
+    <meta name="theme-color" content="#19181d" />
     <script>
       // Apply a saved choice before styles load, avoiding a flash of the wrong theme.
       try {
-        if (localStorage.getItem("nudge-theme") === "dark") {
-          document.documentElement.dataset.theme = "dark";
+        if (localStorage.getItem("nudge-theme") === "light") {
+          document.documentElement.dataset.theme = "light";
           document.querySelector('meta[name="theme-color"]').content =
-            "#21162f";
+            "#f6f5f2";
         }
       } catch {}
     </script>
     <meta
       name="description"
-      content="Small nudges. Better habits. Your personal habit companion, across all your devices."
+      content="Owlert — your owl habit companion. Track your habits and receive reminders across all your devices."
     />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <title>Nudge — Your owl companion</title>
+    <title>Owlert — Your owl companion</title>
   </head>
   <body>
     <div id="root"></div>

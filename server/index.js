@@ -18,7 +18,13 @@ import {
   dayKey,
   quietNow,
   validateSubscription,
+  validateSensorReading,
+  tmp117ToCelsius,
+  streakDurationMs,
+  createChallenge,
+  checkChallengeAnswer,
 } from "./domain.js";
+import { voiceConfigured, synthesize, transcribe } from "./voice.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dataDir = path.resolve(process.env.DATA_DIR || path.join(root, "data"));
@@ -31,7 +37,9 @@ db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;
   CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, habitId TEXT NOT NULL REFERENCES habits(id) ON DELETE CASCADE, source TEXT NOT NULL, createdAt TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS devices (id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, subscription TEXT NOT NULL, endpoint TEXT NOT NULL UNIQUE, enabled INTEGER NOT NULL DEFAULT 1, createdAt TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS notifications (id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL, sent INTEGER NOT NULL, failed INTEGER NOT NULL, reason TEXT NOT NULL, createdAt TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS sensor_readings (id TEXT PRIMARY KEY, doomscrolling INTEGER NOT NULL, slouching INTEGER NOT NULL, sleeping INTEGER NOT NULL, drinkingWater INTEGER NOT NULL, tempRaw INTEGER NOT NULL, createdAt TEXT NOT NULL);
   CREATE INDEX IF NOT EXISTS events_date ON events(createdAt);
+  CREATE INDEX IF NOT EXISTS sensor_readings_date ON sensor_readings(createdAt);
 `);
 const get = (key) => {
   const row = db.prepare("SELECT value FROM config WHERE key=?").get(key);
@@ -178,7 +186,7 @@ app.delete("/api/session", (req, res) => {
   res.clearCookie("nudge_session", { path: "/" });
   res.json({ ok: true });
 });
-app.post("/api/robot/events", (req, res, next) => {
+function requireRobotKey(req, res, next) {
   const keyHash = get("robotKeyHash");
   const key = req.headers.authorization?.replace(/^Bearer /, "");
   if (
@@ -187,13 +195,149 @@ app.post("/api/robot/events", (req, res, next) => {
     !timingSafeEqual(Buffer.from(hash(key)), Buffer.from(keyHash))
   )
     return res.status(401).json({ error: "Invalid robot API key." });
-  recordEvent(req, res, next, "robot");
+  next();
+}
+app.post("/api/robot/events", requireRobotKey, (req, res, next) =>
+  recordEvent(req, res, next, "robot"),
+);
+app.post("/api/robot/sensors", requireRobotKey, (req, res, next) => {
+  try {
+    const reading = validateSensorReading(req.body);
+    const id = randomUUID();
+    const createdAt = new Date().toISOString();
+    db.prepare("INSERT INTO sensor_readings VALUES (?,?,?,?,?,?,?)").run(
+      id,
+      Number(reading.doomscrolling),
+      Number(reading.slouching),
+      Number(reading.sleeping),
+      Number(reading.drinkingWater),
+      reading.tempRaw,
+      createdAt,
+    );
+    set("robotLastSeen", createdAt);
+    res.status(201).json({ id });
+  } catch (error) {
+    next(error);
+  }
 });
 app.use("/api", (req, res, next) =>
   session(req)
     ? next()
     : res.status(401).json({ error: "Sign in to your workspace." }),
 );
+function requireVoice(req, res, next) {
+  if (!voiceConfigured())
+    return res.status(503).json({
+      error:
+        "Voice is not configured. Add ELEVENLABS_API_KEY to the server environment.",
+    });
+  next();
+}
+const voiceRateLimit = rateLimit({
+  windowMs: 60000,
+  limit: 30,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Slow down a little before more voice requests." },
+});
+const challenges = new Map();
+function currentChallenge(id) {
+  const challenge = challenges.get(id);
+  if (!challenge || challenge.expires <= Date.now()) {
+    challenges.delete(id);
+    return null;
+  }
+  return challenge;
+}
+const voiceRouter = express.Router();
+voiceRouter.use(requireVoice, voiceRateLimit);
+voiceRouter.post("/speak", async (req, res, next) => {
+  const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
+  if (!text || text.length > 400)
+    return res
+      .status(400)
+      .json({ error: "Enter text between 1 and 400 characters." });
+  try {
+    const audio = await synthesize(text);
+    res.set("Content-Type", "audio/mpeg");
+    res.set("Cache-Control", "no-store");
+    res.send(audio);
+  } catch (error) {
+    next(error);
+  }
+});
+voiceRouter.post("/challenge", async (req, res, next) => {
+  const habit = db
+    .prepare("SELECT id,active FROM habits WHERE id=?")
+    .get(String(req.body?.habitId || ""));
+  if (!habit || !habit.active)
+    return res.status(400).json({ error: "Choose an active habit." });
+  for (const [id, challenge] of challenges)
+    if (challenge.expires <= Date.now()) challenges.delete(id);
+  const { prompt, answer } = createChallenge();
+  const id = randomUUID();
+  const expires = Date.now() + 2 * 60000;
+  challenges.set(id, { habitId: habit.id, answer, prompt, expires });
+  res.status(201).json({
+    id,
+    prompt,
+    expiresAt: new Date(expires).toISOString(),
+  });
+});
+voiceRouter.get("/challenge/:id/audio", async (req, res, next) => {
+  const challenge = currentChallenge(req.params.id);
+  if (!challenge)
+    return res.status(404).json({ error: "Challenge not found." });
+  try {
+    const audio = await synthesize(challenge.prompt);
+    res.set("Content-Type", "audio/mpeg");
+    res.set("Cache-Control", "no-store");
+    res.send(audio);
+  } catch (error) {
+    next(error);
+  }
+});
+voiceRouter.post(
+  "/challenge/:id/answer",
+  express.raw({ type: "audio/*", limit: "4mb" }),
+  async (req, res, next) => {
+    const challenge = currentChallenge(req.params.id);
+    if (!challenge)
+      return res.status(404).json({ error: "Challenge not found." });
+    try {
+      const heard = Buffer.isBuffer(req.body)
+        ? await transcribe(
+            req.body,
+            req.headers["content-type"] || "application/octet-stream",
+          )
+        : typeof req.body?.answer === "string"
+          ? req.body.answer.trim()
+          : "";
+      const correct = checkChallengeAnswer(challenge.answer, heard);
+      challenges.delete(req.params.id);
+      if (correct)
+        return res.json({
+          correct: true,
+          heard,
+          message: "Nice, you're awake. Keep going.",
+        });
+      let eventId;
+      try {
+        eventId = (await logOccurrence(challenge.habitId, "voice")).id;
+      } catch {}
+      res.json({
+        correct: false,
+        heard,
+        expected: challenge.answer,
+        ...(eventId ? { eventId } : {}),
+        message: "Let's log that and take a real break.",
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+app.use("/api/voice", voiceRouter);
 app.get("/api/state", (req, res) => {
   res.json({
     name: get("account").name,
@@ -219,7 +363,28 @@ app.get("/api/state", (req, res) => {
       configured: Boolean(get("robotKeyHash")),
       lastSeen: get("robotLastSeen"),
     },
+    voice: { configured: voiceConfigured() },
     publicKey: vapid.publicKey,
+  });
+});
+app.get("/api/sensors/latest", (req, res) => {
+  const readings = db
+    .prepare(
+      "SELECT * FROM sensor_readings WHERE createdAt>=? ORDER BY createdAt ASC",
+    )
+    .all(new Date(Date.now() - 48 * 3600000).toISOString())
+    .map((r) => ({
+      ...r,
+      doomscrolling: Boolean(r.doomscrolling),
+      slouching: Boolean(r.slouching),
+      sleeping: Boolean(r.sleeping),
+      drinkingWater: Boolean(r.drinkingWater),
+    }));
+  const latest = readings[readings.length - 1] || null;
+  res.json({
+    latest: latest && { ...latest, tempC: tmp117ToCelsius(latest.tempRaw) },
+    doomscrollingDurationMs: streakDurationMs(readings, "doomscrolling"),
+    sleepDurationMs: streakDurationMs(readings, "sleeping"),
   });
 });
 app.post("/api/habits", (req, res) => {
@@ -262,39 +427,43 @@ app.delete("/api/habits/:id", (req, res) => {
   db.prepare("DELETE FROM habits WHERE id=?").run(req.params.id);
   res.json({ ok: true });
 });
+async function logOccurrence(habitId, source = "manual") {
+  const habit = db
+    .prepare("SELECT * FROM habits WHERE id=?")
+    .get(String(habitId || ""));
+  if (!habit || !habit.active)
+    throw Object.assign(new Error("Choose an active habit."), { status: 400 });
+  const now = new Date();
+  const settings = get("settings");
+  const count = db
+    .prepare("SELECT createdAt FROM events WHERE habitId=? AND createdAt>?")
+    .all(habit.id, new Date(Date.now() - 48 * 3600000).toISOString())
+    .filter(
+      (e) =>
+        dayKey(e.createdAt, settings.timezone) ===
+        dayKey(now, settings.timezone),
+    ).length;
+  const id = randomUUID();
+  db.prepare("INSERT INTO events VALUES (?,?,?,?)").run(
+    id,
+    habit.id,
+    source,
+    now.toISOString(),
+  );
+  if (source === "robot") set("robotLastSeen", now.toISOString());
+  if (count + 1 === habit.dailyLimit)
+    await sendNudge(
+      "A little reset?",
+      habit.description ||
+        `Check in with your ${habit.name.toLowerCase()} habit.`,
+      "limit",
+      habit.id,
+    );
+  return { id };
+}
 async function recordEvent(req, res, next, source = "manual") {
   try {
-    const habit = db
-      .prepare("SELECT * FROM habits WHERE id=?")
-      .get(String(req.body.habitId || ""));
-    if (!habit || !habit.active)
-      return res.status(400).json({ error: "Choose an active habit." });
-    const now = new Date();
-    const settings = get("settings");
-    const count = db
-      .prepare("SELECT createdAt FROM events WHERE habitId=? AND createdAt>?")
-      .all(habit.id, new Date(Date.now() - 48 * 3600000).toISOString())
-      .filter(
-        (e) =>
-          dayKey(e.createdAt, settings.timezone) ===
-          dayKey(now, settings.timezone),
-      ).length;
-    const id = randomUUID();
-    db.prepare("INSERT INTO events VALUES (?,?,?,?)").run(
-      id,
-      habit.id,
-      source,
-      now.toISOString(),
-    );
-    if (source === "robot") set("robotLastSeen", now.toISOString());
-    if (count + 1 === habit.dailyLimit)
-      await sendNudge(
-        "A little reset?",
-        habit.description ||
-          `Check in with your ${habit.name.toLowerCase()} habit.`,
-        "limit",
-        habit.id,
-      );
+    const { id } = await logOccurrence(req.body?.habitId, source);
     res.status(201).json({ id });
   } catch (error) {
     next(error);
@@ -408,7 +577,7 @@ app.post(
   async (req, res) => {
     res.json(
       await sendNudge(
-        "Hello from Nudge 🌱",
+        "Hello from Owlert 🦉",
         "Your companion is connected. Small steps start here.",
         "test",
         `test-${Date.now()}`,
@@ -477,7 +646,7 @@ const server = app.listen(
   process.env.HOST || "0.0.0.0",
   () =>
     console.log(
-      `Nudge API ready at http://localhost:${process.env.PORT || 3001}`,
+      `Owlert API ready at http://localhost:${process.env.PORT || 3001}`,
     ),
 );
 function stop() {

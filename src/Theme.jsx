@@ -12,17 +12,17 @@ const storageKey = "nudge-theme";
 
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(() =>
-    document.documentElement.dataset.theme === "dark" ? "dark" : "light",
+    document.documentElement.dataset.theme === "light" ? "light" : "dark",
   );
   useLayoutEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.querySelector('meta[name="theme-color"]').content =
-      theme === "dark" ? "#21162f" : "#f8f5fc";
+      theme === "dark" ? "#19181d" : "#f6f5f2";
   }, [theme]);
   useEffect(() => {
     const sync = (event) => {
       if (event.key === storageKey || event.key === null)
-        setTheme(event.newValue === "dark" ? "dark" : "light");
+        setTheme(event.newValue === "light" ? "light" : "dark");
     };
     window.addEventListener("storage", sync);
     return () => window.removeEventListener("storage", sync);
@@ -63,9 +63,9 @@ export function ThemeSettings() {
   return (
     <section className="panel appearance-panel" aria-label="Appearance">
       <div>
-        <h2>Choose your kind of light.</h2>
+        <h2>Appearance</h2>
         <p className="muted">
-          Light is the default. Your choice saves automatically in this browser.
+          Your theme preference saves automatically in this browser.
         </p>
       </div>
       <div className="theme-options" role="group" aria-label="Color theme">
@@ -77,7 +77,7 @@ export function ThemeSettings() {
         >
           <Sun size={19} />
           <span>
-            Light<small>A soft lavender glow</small>
+            Light<small>Warm, light surfaces</small>
           </span>
         </button>
         <button
@@ -88,7 +88,7 @@ export function ThemeSettings() {
         >
           <Moon size={19} />
           <span>
-            Dark<small>A little nightfall</small>
+            Dark<small>Soft charcoal surfaces</small>
           </span>
         </button>
       </div>

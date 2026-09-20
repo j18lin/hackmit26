@@ -2,20 +2,83 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync } from "node:fs";
+import { createServer } from "node:http";
 import path from "node:path";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 mkdirSync(path.join(root, "work"), { recursive: true });
+const numberWords = [
+  "zero",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+  "ten",
+  "eleven",
+  "twelve",
+  "thirteen",
+  "fourteen",
+  "fifteen",
+  "sixteen",
+  "seventeen",
+  "eighteen",
+  "nineteen",
+];
+function spokenNumber(number) {
+  if (number < 20) return numberWords[number];
+  const tens = [
+    "twenty",
+    "thirty",
+    "forty",
+    "fifty",
+    "sixty",
+    "seventy",
+    "eighty",
+    "ninety",
+  ][Math.floor(number / 10) - 2];
+  return number % 10 ? `${tens} ${numberWords[number % 10]}` : tens;
+}
 
 test("workspace API: authentication, persistence, multi-device settings and robot ingestion", async () => {
   const dir = mkdtempSync(path.join(root, "work", "test-"));
+  let stubTranscript = "";
+  const elevenLabsStub = createServer((req, res) => {
+    if (req.url.startsWith("/v1/text-to-speech/")) {
+      assert.equal(req.headers["xi-api-key"], "test-key");
+      req.resume();
+      res.writeHead(200, { "Content-Type": "audio/mpeg" });
+      return res.end(Buffer.from("ID3fake"));
+    }
+    if (req.url === "/v1/speech-to-text") {
+      req.resume();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ text: stubTranscript }));
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  await new Promise((resolve) =>
+    elevenLabsStub.listen(3198, "127.0.0.1", resolve),
+  );
   const child = spawn(
     process.execPath,
     ["--import", "./tests/push-stub.js", "server/index.js"],
     {
       cwd: root,
-      env: { ...process.env, PORT: "3199", HOST: "127.0.0.1", DATA_DIR: dir },
+      env: {
+        ...process.env,
+        PORT: "3199",
+        HOST: "127.0.0.1",
+        DATA_DIR: dir,
+        ELEVENLABS_API_KEY: "test-key",
+        ELEVENLABS_BASE_URL: "http://127.0.0.1:3198",
+      },
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
@@ -57,6 +120,15 @@ test("workspace API: authentication, persistence, multi-device settings and robo
     }
     assert.ok(ready, `Server did not start: ${output}`);
     assert.equal((await call("/state")).status, 401);
+    const unauthenticatedVoice = await fetch(
+      "http://127.0.0.1:3199/api/voice/speak",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: "Hello" }),
+      },
+    );
+    assert.equal(unauthenticatedVoice.status, 401);
     assert.equal(
       (await call("/session", "POST", { name: "Test", password: "short" }))
         .status,
@@ -77,6 +149,98 @@ test("workspace API: authentication, persistence, multi-device settings and robo
     const initial = (await call("/state")).value;
     assert.equal(initial.habits.length, 8);
     assert.equal(initial.events.length, 0);
+    assert.equal(initial.voice.configured, true);
+    const spoken = await fetch("http://127.0.0.1:3199/api/voice/speak", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ text: "Take a break." }),
+    });
+    assert.equal(spoken.status, 200);
+    assert.equal(spoken.headers.get("content-type"), "audio/mpeg");
+    assert.equal(Buffer.from(await spoken.arrayBuffer()).toString(), "ID3fake");
+    assert.equal(
+      (
+        await call("/voice/speak", "POST", {
+          text: "   ",
+        })
+      ).status,
+      400,
+    );
+    const deskSleep = initial.habits.find(
+      (habit) => habit.name === "Falling asleep at desk",
+    );
+    const challenge = await call("/voice/challenge", "POST", {
+      habitId: deskSleep.id,
+    });
+    assert.equal(challenge.status, 201);
+    assert.match(challenge.value.prompt, /what is \d+ (plus|times) \d+\?/);
+    const challengeAudio = await fetch(
+      `http://127.0.0.1:3199/api/voice/challenge/${challenge.value.id}/audio`,
+      { headers: { Cookie: cookie } },
+    );
+    assert.equal(challengeAudio.status, 200);
+    assert.equal(challengeAudio.headers.get("content-type"), "audio/mpeg");
+    assert.equal(
+      Buffer.from(await challengeAudio.arrayBuffer()).toString(),
+      "ID3fake",
+    );
+    const [, first, operation, second] = challenge.value.prompt.match(
+      /what is (\d+) (plus|times) (\d+)\?/,
+    );
+    const expected =
+      operation === "plus"
+        ? Number(first) + Number(second)
+        : Number(first) * Number(second);
+    const eventsBeforeVoice = (await call("/state")).value.events.length;
+    const correctChallenge = await call(
+      `/voice/challenge/${challenge.value.id}/answer`,
+      "POST",
+      { answer: String(expected) },
+    );
+    assert.deepEqual(correctChallenge.value.correct, true);
+    assert.equal((await call("/state")).value.events.length, eventsBeforeVoice);
+    const wrongChallenge = await call("/voice/challenge", "POST", {
+      habitId: deskSleep.id,
+    });
+    const wrongAnswer = await call(
+      `/voice/challenge/${wrongChallenge.value.id}/answer`,
+      "POST",
+      { answer: "banana" },
+    );
+    assert.equal(wrongAnswer.value.correct, false);
+    assert.ok(wrongAnswer.value.eventId);
+    const afterVoice = (await call("/state")).value;
+    assert.ok(afterVoice.events.some((event) => event.source === "voice"));
+    assert.equal(
+      (
+        await call(
+          `/voice/challenge/${wrongChallenge.value.id}/answer`,
+          "POST",
+          { answer: "12" },
+        )
+      ).status,
+      404,
+    );
+    const spokenChallenge = await call("/voice/challenge", "POST", {
+      habitId: deskSleep.id,
+    });
+    const [, spokenFirst, spokenOperation, spokenSecond] =
+      spokenChallenge.value.prompt.match(/what is (\d+) (plus|times) (\d+)\?/);
+    const spokenExpected =
+      spokenOperation === "plus"
+        ? Number(spokenFirst) + Number(spokenSecond)
+        : Number(spokenFirst) * Number(spokenSecond);
+    stubTranscript = spokenNumber(spokenExpected);
+    const transcriptAnswer = await fetch(
+      `http://127.0.0.1:3199/api/voice/challenge/${spokenChallenge.value.id}/answer`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "audio/webm", Cookie: cookie },
+        body: Buffer.from("fake recording"),
+      },
+    );
+    assert.equal(transcriptAnswer.status, 200);
+    assert.equal((await transcriptAnswer.json()).correct, true);
     const settings = {
       timezone: "America/New_York",
       quietStart: 0,
@@ -110,7 +274,7 @@ test("workspace API: authentication, persistence, multi-device settings and robo
     const event = await call("/events", "POST", { habitId: id });
     assert.equal(event.status, 201);
     const after = (await call("/state")).value;
-    assert.equal(after.events.length, 1);
+    assert.equal(after.events.length, 2);
     assert.equal(after.notifications[0].reason, "limit");
     assert.equal(after.notifications[0].sent, 0);
     assert.equal(
@@ -196,6 +360,41 @@ test("workspace API: authentication, persistence, multi-device settings and robo
       201,
     );
     assert.equal((await call("/state")).value.events[0].source, "robot");
+    const reading = {
+      doomscrolling: true,
+      slouching: false,
+      sleeping: false,
+      drinkingWater: false,
+      tempRaw: 2560,
+    };
+    assert.equal((await call("/robot/sensors", "POST", reading)).status, 401);
+    assert.equal(
+      (
+        await call("/robot/sensors", "POST", reading, {
+          Authorization: `Bearer ${key}`,
+        })
+      ).status,
+      201,
+    );
+    assert.equal(
+      (
+        await call(
+          "/robot/sensors",
+          "POST",
+          { ...reading, tempRaw: 99999 },
+          {
+            Authorization: `Bearer ${key}`,
+          },
+        )
+      ).status,
+      400,
+    );
+    const sensors = (await call("/sensors/latest")).value;
+    assert.equal(sensors.latest.doomscrolling, true);
+    assert.equal(sensors.latest.tempRaw, 2560);
+    assert.equal(sensors.latest.tempC, 20);
+    assert.ok(sensors.doomscrollingDurationMs >= 0);
+    assert.equal(sensors.sleepDurationMs, 0);
     await call("/robot/key", "POST");
     assert.equal(
       (
@@ -228,11 +427,13 @@ test("workspace API: authentication, persistence, multi-device settings and robo
     cookie = firstCookie;
     assert.equal((await call("/state")).status, 200);
     await call("/habits/" + id, "DELETE");
+    await call("/habits/" + deskSleep.id, "DELETE");
     assert.equal((await call("/state")).value.events.length, 0);
     await call("/devices/" + device.value.id, "DELETE");
     assert.equal((await call("/state")).value.devices.length, 0);
   } finally {
     child.kill();
     await once(child, "exit");
+    await new Promise((resolve) => elevenLabsStub.close(resolve));
   }
 });

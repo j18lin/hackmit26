@@ -1,0 +1,598 @@
+/* Dashboard presentation. Owl artwork and the welcome animation live in owl-theme. */
+:root {
+  --bg: #19181d;
+  --surface: #222127;
+  --ink: #f2f0f5;
+  --muted: #b5b0bf;
+  --soft: #b5b0bf;
+  --border: #3b3742;
+  --purple: #bea4e3;
+  --green: #bea4e3;
+  --accent-fill: #77549f;
+  --accent-soft: #342c40;
+  --quiet: #29272e;
+  --success: #98d6b5;
+  --success-bg: #24382e;
+  --warning: #f2c580;
+  --warning-bg: #443522;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+:root[data-theme="light"] {
+  --bg: #f6f5f2;
+  --surface: #ffffff;
+  --ink: #28252d;
+  --muted: #6d6874;
+  --soft: #6d6874;
+  --border: #dedbe2;
+  --purple: #704c96;
+  --green: #704c96;
+  --accent-fill: #704c96;
+  --accent-soft: #eee8f4;
+  --quiet: #f1efed;
+  --success: #286346;
+  --success-bg: #eaf4ed;
+  --warning: #87571c;
+  --warning-bg: #fbf0dd;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+:root .sidebar,
+:root .topbar {
+  background: var(--surface);
+  border-color: var(--border);
+}
+:root .brand,
+:root .page-heading h1,
+:root .stat-card strong,
+:root .breadcrumb strong,
+:root .hero h2 {
+  color: var(--ink);
+}
+:root .brand-dot,
+:root .text-button,
+:root .hero-label {
+  color: var(--purple);
+}
+:root .workspace-label,
+:root .eyebrow,
+:root .breadcrumb,
+:root .live-status,
+:root .profile small,
+:root .page-heading p,
+:root .section-heading p,
+:root .panel-heading p,
+:root .stat-label,
+:root .stat-card small,
+:root .hero p,
+:root .habit-card > p,
+:root .habit-count strong span,
+:root .habit-count > span,
+:root .habit-bottom > span,
+:root .chart-caption,
+:root .chart-column > span,
+:root .chart-grid,
+:root .activity-copy p {
+  color: var(--muted);
+}
+:root nav button,
+:root .sidebar-bottom > button,
+:root .icon-button,
+:root .habit-menu {
+  color: var(--muted);
+}
+:root nav button.selected,
+:root .sidebar-bottom > button.selected {
+  background: var(--accent-soft);
+  color: var(--purple);
+  box-shadow: none;
+}
+:root nav button:hover,
+:root .sidebar-bottom > button:hover,
+:root .icon-button:hover {
+  background: var(--quiet);
+  color: var(--ink);
+}
+:root .sidebar-companion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: 0;
+  padding: 14px 8px;
+  margin: 30px 0 16px;
+}
+:root .sidebar-companion-icon {
+  background: none;
+  margin: 0;
+  flex-shrink: 0;
+}
+:root .sidebar-companion button {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+:root .avatar,
+:root .count-badge,
+:root .nav-count {
+  background: var(--accent-soft);
+  color: var(--purple);
+  border-color: var(--border);
+}
+:root .status-dot {
+  background: var(--success);
+  box-shadow: none;
+}
+:root .page-heading {
+  margin-bottom: 28px;
+}
+:root .page-heading h1 {
+  font-size: clamp(26px, 2.4vw, 34px);
+  letter-spacing: -1.2px;
+  line-height: 1.25;
+}
+:root .page-heading p,
+:root .section-heading p,
+:root .panel-heading p {
+  font-size: 13px;
+  line-height: 1.6;
+}
+:root .button {
+  border-radius: 0;
+  font-size: 12px;
+  min-height: 40px;
+}
+:root .button.primary,
+:root .hero-button {
+  background: var(--accent-fill);
+  color: #fff;
+  box-shadow: none;
+}
+:root .button.primary:hover,
+:root .hero-button:hover {
+  background: var(--accent-fill);
+  filter: brightness(1.12);
+}
+:root .button.secondary {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--border);
+}
+:root button:focus-visible,
+:root a:focus-visible {
+  outline: 2px solid var(--purple);
+  outline-offset: 4px;
+}
+:root .hero {
+  min-height: 196px;
+  padding: 26px 32px;
+  gap: 24px;
+  border-radius: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+:root .hero::after,
+:root .hero .owl-halo,
+:root .hero .owl-spark {
+  display: none;
+}
+:root .hero-copy {
+  max-width: none;
+}
+:root .hero-label {
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  font-weight: 700;
+}
+:root .hero h2 {
+  font-size: 25px;
+  letter-spacing: -0.8px;
+  margin: 10px 0 8px;
+}
+:root .hero p {
+  font-size: 13px;
+  max-width: none;
+  line-height: 1.6;
+  margin: 0 0 17px;
+}
+:root .hero-owl-button {
+  position: static;
+  margin: 0 14px 0 auto;
+}
+:root .hero .owl-companion {
+  width: 160px;
+  height: 158px;
+}
+:root .hero .owl-illustration {
+  width: 160px;
+  height: 158px;
+}
+:root .stats-grid {
+  gap: 0;
+  padding: 24px 0;
+  margin: 0 0 28px;
+  border-bottom: 1px solid var(--border);
+}
+:root .stat-card {
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+  padding: 0 22px;
+}
+:root .stat-card:first-child {
+  padding-left: 0;
+}
+:root .stat-card:last-child {
+  border-right: 0;
+}
+:root .stat-card > .icon-tile {
+  display: none;
+}
+:root .stat-label {
+  font-size: 12px;
+}
+:root .stat-card strong {
+  font-size: 34px;
+  font-weight: 650;
+  margin: 12px 0 10px;
+  font-variant-numeric: tabular-nums;
+}
+:root .stat-card small {
+  font-size: 11px;
+  line-height: 1.5;
+}
+:root .habit-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+:root .habit-card {
+  padding: 20px 22px 0;
+  border-radius: 0;
+  background: var(--surface);
+  border-color: var(--border);
+}
+:root .habit-card:hover {
+  box-shadow: none;
+  border-color: var(--purple);
+}
+:root .habit-card h3 {
+  font-size: 17px;
+  margin: 16px 0 7px;
+  letter-spacing: -0.3px;
+}
+:root .habit-card > p {
+  font-size: 13px;
+  line-height: 1.6;
+  min-height: 21px;
+}
+:root .habit-count {
+  margin-top: 20px;
+}
+:root .habit-count strong {
+  font-size: 27px;
+  font-variant-numeric: tabular-nums;
+}
+:root .habit-count > span,
+:root .habit-bottom > span {
+  font-size: 11px;
+}
+:root .habit-bottom {
+  gap: 8px;
+  border-color: var(--border);
+  padding: 12px 0;
+  margin-top: 18px;
+}
+:root .habit-bottom button {
+  font-size: 12px;
+  padding: 7px 10px;
+  min-height: 34px;
+  color: var(--purple);
+  background: var(--accent-soft);
+}
+:root .habit-menu {
+  min-width: 30px;
+  min-height: 32px;
+}
+:root .pill {
+  font-size: 10px;
+  padding: 5px 8px;
+}
+:root .pill.green {
+  background: var(--success-bg);
+  color: var(--success);
+}
+:root .pill.green::before {
+  background: var(--success);
+}
+:root .pill.amber {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+:root .pill.neutral {
+  background: var(--quiet);
+  color: var(--muted);
+}
+:root .progress-track {
+  height: 4px;
+  background: var(--quiet);
+}
+:root .progress-track > span {
+  background: var(--purple);
+}
+:root .progress-track > span.over {
+  background: var(--warning);
+}
+:root .panel,
+:root .preset-card {
+  border-radius: 0;
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: none;
+}
+:root .subtle-chip {
+  color: var(--muted);
+  background: none;
+  border-color: var(--border);
+}
+:root .chart-grid span::after {
+  border-color: var(--border);
+}
+:root .chart-bar {
+  background: var(--accent-soft);
+}
+:root .chart-bar.current,
+:root .legend-dot {
+  background: var(--purple);
+}
+:root .text-button {
+  font-size: 12px;
+}
+
+/* Carry the same surfaces through editing, filters, and connected-device pages. */
+:root dialog,
+:root input,
+:root select,
+:root textarea,
+:root .theme-option,
+:root .notification-hero,
+:root .future-panel,
+:root .preset-picker {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--border);
+}
+:root .filter-tabs,
+:root .info-strip,
+:root .help-content pre {
+  background: var(--quiet);
+  color: var(--muted);
+  border-color: var(--border);
+}
+:root .filter-tabs button.active,
+:root .theme-option[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--purple);
+  border-color: var(--purple);
+  box-shadow: none;
+}
+:root label,
+:root .muted,
+:root .theme-option small,
+:root .filter-tabs button,
+:root .preset-copy > span,
+:root .preset-hint,
+:root .preset-picker small,
+:root .notification-hero p,
+:root .info-strip p,
+:root .robot-panel > p,
+:root .future-panel > p,
+:root .install-panel > p,
+:root .help-content p,
+:root .setting-line p,
+:root .settings-form small,
+:root .device-row small,
+:root .quiet-display span,
+:root .activity-row div > span,
+:root .activity-row time,
+:root .chart-caption > span:last-child,
+:root .empty p {
+  color: var(--muted);
+}
+:root .activity-row strong,
+:root .empty h3 {
+  color: var(--ink);
+}
+:root .activity-row,
+:root .chart-caption,
+:root .device-row,
+:root .modal-head,
+:root .modal-actions,
+:root .roadmap-row {
+  border-color: var(--border);
+}
+:root .chart-bar b,
+:root .chart-column > span.today-label,
+:root .preset-copy small,
+:root .preset-future,
+:root .preset-card > svg {
+  color: var(--purple);
+}
+:root .preset-card:hover:not(:disabled) {
+  background: var(--quiet);
+  border-color: var(--purple);
+}
+:root input:focus,
+:root select:focus,
+:root textarea:focus {
+  border-color: var(--purple);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+:root .checkbox-label input {
+  accent-color: var(--accent-fill);
+}
+:root .toggle.on {
+  background: var(--accent-fill);
+}
+:root[data-theme="dark"] .icon-tile.screen,
+:root[data-theme="dark"] .icon-tile.posture,
+:root[data-theme="dark"] .icon-tile.sleep {
+  color: #d1b5f4;
+  background: #3c2f4d;
+}
+:root[data-theme="dark"] .icon-tile.mindfulness {
+  color: #f5a9c2;
+  background: #442d39;
+}
+:root[data-theme="dark"] .icon-tile.movement {
+  color: #9bdbc1;
+  background: #283e36;
+}
+
+/* Hard edges for every UI surface; circles remain only in artwork and status dots. */
+:root
+  body
+  :is(
+    button,
+    input,
+    select,
+    textarea,
+    dialog,
+    pre,
+    .hero,
+    .habit-card,
+    .panel,
+    .preset-card,
+    .stat-card,
+    .auth-card,
+    .icon-tile,
+    .pill,
+    .avatar,
+    .count-badge,
+    .nav-count,
+    .subtle-chip,
+    .progress-track,
+    .progress-track > span,
+    .filter-tabs,
+    .notification-hero,
+    .preset-picker,
+    .info-strip,
+    .form-error,
+    .error-banner,
+    .toast,
+    .chart-bar,
+    .toggle,
+    .toggle > span,
+    .brand img,
+    .companion-mark
+  ) {
+  border-radius: 0;
+}
+
+:root .owl-illustration,
+:root .owl-companion .owl-illustration,
+:root .owl-launch:hover:not(:disabled) .owl-illustration {
+  filter: none;
+}
+:root .owl-flight {
+  animation: none;
+}
+:root .departing .owl-flight {
+  animation: owlDeparture 1.4s cubic-bezier(0.45, 0, 0.8, 0.6) forwards;
+}
+:root .owl-intro {
+  background: var(--bg);
+  color: var(--ink);
+}
+:root .intro-content h1 span {
+  background: none;
+  color: var(--purple);
+}
+:root .intro-eyebrow,
+:root .intro-content > p,
+:root .intro-invitation,
+:root .intro-footer {
+  color: var(--muted);
+}
+:root .intro-footer {
+  border-color: var(--border);
+}
+:root .intro-skip {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--border);
+}
+:root .intro-skip:hover {
+  background: var(--quiet);
+  color: var(--ink);
+}
+:root .owl-eyes {
+  transform-origin: 180px 144px;
+}
+
+@media (max-width: 1000px) {
+  :root .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 24px;
+  }
+  :root .stat-card:nth-child(2n) {
+    border-right: 0;
+  }
+  :root .stat-card:nth-child(2n + 1) {
+    padding-left: 0;
+  }
+  :root .bottom-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 720px) {
+  :root .sidebar-companion {
+    display: none;
+  }
+  :root .page-heading {
+    align-items: flex-start;
+  }
+  :root .hero {
+    padding: 22px;
+    gap: 12px;
+  }
+  :root .hero h2 {
+    font-size: 22px;
+  }
+  :root .hero-owl-button {
+    align-self: flex-start;
+    margin: 20px -8px 0 0;
+  }
+  :root .hero .owl-companion,
+  :root .hero .owl-illustration {
+    width: 88px;
+    height: 95px;
+  }
+  :root .habit-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  :root .stat-card {
+    padding: 0 16px;
+  }
+  :root .stat-card strong {
+    font-size: 30px;
+  }
+  :root .habit-card {
+    padding: 18px 18px 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root .departing .owl-flight,
+  :root .owl-eyes,
+  :root .departing .owl-wing {
+    animation: none;
+  }
+  :root .hero .owl-illustration {
+    animation: none;
+    transition: none;
+  }
+}
