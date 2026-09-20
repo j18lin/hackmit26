@@ -12,6 +12,7 @@ import {
   Cigarette,
   Clock3,
   Download,
+  Droplets,
   Dumbbell,
   Eye,
   Footprints,
@@ -52,7 +53,7 @@ const icons = {
   screen: Eye,
   mindfulness: Hand,
   movement: Footprints,
-  hydration: Leaf,
+  hydration: Droplets,
   sleep: Moon,
   smoking: Cigarette,
   lifting: Dumbbell,
@@ -79,7 +80,7 @@ const navItems = [
 const blankHabit = {
   name: "",
   description: "",
-  category: "posture",
+  category: "screen",
   dailyLimit: 5,
   reminderMinutes: 0,
   active: true,
@@ -141,9 +142,8 @@ function relative(date) {
         : `${Math.floor(min / 1440)}d ago`;
 }
 const SENSOR_ALERT_FIELDS = [
-  { field: "slouching", label: "Slouching", icon: Activity },
-  { field: "doomscrolling", label: "Doom scrolling", icon: Monitor },
-  { field: "sleeping", label: "Falling asleep at desk", icon: Moon },
+  { field: "doomscrolling", label: "Doomscrolling", icon: Smartphone },
+  { field: "drinkingWater", label: "Missed water breaks", icon: Droplets },
 ];
 function Logo({ small = false }) {
   return (
@@ -512,7 +512,11 @@ function App() {
                   {count}
                   <span> / {h.dailyLimit}</span>
                 </strong>
-                <span>occurrences today</span>
+                <span>
+                  {h.category === "hydration"
+                    ? "missed water breaks today"
+                    : "occurrences today"}
+                </span>
               </div>
               <div className="progress-track">
                 <span
@@ -533,7 +537,8 @@ function App() {
                   disabled={busy || !h.active}
                   onClick={() => logHabit(h)}
                 >
-                  <Plus size={15} /> Log
+                  <Plus size={15} />{" "}
+                  {h.category === "hydration" ? "Log missed break" : "Log"}
                 </button>
                 {state.voice?.configured && h.category === "sleep" && (
                   <button
@@ -927,7 +932,9 @@ function App() {
                     <h2>Start with a preset</h2>
                     <p>Pick a pattern to notice. Customize it before adding.</p>
                   </div>
-                  <span className="subtle-chip">8 starting points</span>
+                  <span className="subtle-chip">
+                    {habitPresets.length} starting points
+                  </span>
                 </div>
                 <div className="preset-grid">
                   {habitPresets.map((preset) => {
@@ -1269,8 +1276,8 @@ function App() {
                   <div>
                     <h2>Sensor-detected violations</h2>
                     <p>
-                      Your robot decides on-device when a habit is violated
-                      and reports it once. Counts below are from the last{" "}
+                      Your robot decides on-device when a habit is violated and
+                      reports it once. Counts below are from the last{" "}
                       {state.violations?.windowHours ?? 48} hours.
                     </p>
                   </div>
@@ -1287,7 +1294,7 @@ function App() {
                       <span>
                         {count > 0
                           ? `${label}: ${count} time${count === 1 ? "" : "s"}, last ${relative(lastAt)}`
-                          : `No ${label.toLowerCase()} violations`}
+                          : `No ${label.toLowerCase()} reported`}
                       </span>
                       <span className={`pill ${count > 0 ? "amber" : "green"}`}>
                         {count > 0 ? "Flagged" : "Good"}

@@ -620,14 +620,14 @@ footer {
   margin: 8px auto 0;
 }
 .owl-eyes {
-  transform-origin: 180px 145px;
+  transform-origin: 180px 120px;
   animation: owlBlink 7s infinite;
 }
 .owl-wing-left {
-  transform-origin: 112px 150px;
+  transform-origin: 116px 149px;
 }
 .owl-wing-right {
-  transform-origin: 248px 150px;
+  transform-origin: 244px 149px;
 }
 .owl-intro {
   position: fixed;
@@ -923,18 +923,18 @@ footer {
 }
 @keyframes wingLeft {
   from {
-    transform: rotate(-60deg);
+    transform: rotate(58deg);
   }
   to {
-    transform: rotate(28deg);
+    transform: rotate(8deg);
   }
 }
 @keyframes wingRight {
   from {
-    transform: rotate(60deg);
+    transform: rotate(-58deg);
   }
   to {
-    transform: rotate(-28deg);
+    transform: rotate(-8deg);
   }
 }
 @keyframes welcomeFade {
