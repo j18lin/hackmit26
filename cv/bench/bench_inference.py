@@ -87,6 +87,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--frames", type=int, default=30, help="number of frames to benchmark")
     parser.add_argument("--camera", type=int, default=0, help="cv2.VideoCapture index")
+    parser.add_argument("--image", type=str, default=None, help="path to a static image instead of the live camera")
     args = parser.parse_args()
 
     if not POSE_MODEL_PATH.exists() or not DETECT_MODEL_PATH.exists():
@@ -95,31 +96,48 @@ def main():
     pose_interpreter = load_interpreter(POSE_MODEL_PATH)
     detect_interpreter = load_interpreter(DETECT_MODEL_PATH)
 
-    cap = cv2.VideoCapture(args.camera)
-    if not cap.isOpened():
-        raise RuntimeError(f"Could not open camera index {args.camera}")
-
     pose_times, detect_times = [], []
     log_lines = [f"=== bench run {time.strftime('%Y-%m-%d %H:%M:%S')} ({args.frames} frames) ==="]
 
-    print(f"Running {args.frames} frames through MoveNet Lightning + EfficientDet-Lite0...")
-    for i in range(args.frames):
-        ok, frame = cap.read()
-        if not ok:
-            print(f"frame {i}: camera read failed, stopping early")
-            break
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    if args.image:
+        frame_bgr = cv2.imread(args.image)
+        if frame_bgr is None:
+            raise FileNotFoundError(f"Could not read image at {args.image}")
+        frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
 
-        pose_ms, pose_info = run_pose(pose_interpreter, frame_rgb)
-        detect_ms, detect_info = run_detect(detect_interpreter, frame_rgb)
-        pose_times.append(pose_ms)
-        detect_times.append(detect_ms)
+        print(f"Running {args.frames} passes of {args.image} through MoveNet Lightning + EfficientDet-Lite0...")
+        for i in range(args.frames):
+            pose_ms, pose_info = run_pose(pose_interpreter, frame_rgb)
+            detect_ms, detect_info = run_detect(detect_interpreter, frame_rgb)
+            pose_times.append(pose_ms)
+            detect_times.append(detect_ms)
 
-        line = f"frame {i:03d}: pose={pose_ms:.1f}ms ({pose_info})  detect={detect_ms:.1f}ms ({detect_info})"
-        print(line)
-        log_lines.append(line)
+            line = f"pass {i:03d}: pose={pose_ms:.1f}ms ({pose_info})  detect={detect_ms:.1f}ms ({detect_info})"
+            print(line)
+            log_lines.append(line)
+    else:
+        cap = cv2.VideoCapture(args.camera)
+        if not cap.isOpened():
+            raise RuntimeError(f"Could not open camera index {args.camera}")
 
-    cap.release()
+        print(f"Running {args.frames} frames through MoveNet Lightning + EfficientDet-Lite0...")
+        for i in range(args.frames):
+            ok, frame = cap.read()
+            if not ok:
+                print(f"frame {i}: camera read failed, stopping early")
+                break
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+            pose_ms, pose_info = run_pose(pose_interpreter, frame_rgb)
+            detect_ms, detect_info = run_detect(detect_interpreter, frame_rgb)
+            pose_times.append(pose_ms)
+            detect_times.append(detect_ms)
+
+            line = f"frame {i:03d}: pose={pose_ms:.1f}ms ({pose_info})  detect={detect_ms:.1f}ms ({detect_info})"
+            print(line)
+            log_lines.append(line)
+
+        cap.release()
 
     print()
     log_lines.append("")

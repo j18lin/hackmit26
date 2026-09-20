@@ -21,7 +21,9 @@ import {
   validateSensorReading,
   tmp117ToCelsius,
   streakDurationMs,
+  evaluateSensorThresholds,
 } from "./domain.js";
+import { sensorWindowHours, sensorThresholdsMs } from "./constants.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dataDir = path.resolve(process.env.DATA_DIR || path.join(root, "data"));
@@ -222,6 +224,28 @@ app.use("/api", (req, res, next) =>
     ? next()
     : res.status(401).json({ error: "Sign in to your workspace." }),
 );
+function sensorSummary() {
+  const readings = db
+    .prepare(
+      "SELECT * FROM sensor_readings WHERE createdAt>=? ORDER BY createdAt ASC",
+    )
+    .all(new Date(Date.now() - sensorWindowHours * 3600000).toISOString())
+    .map((r) => ({
+      ...r,
+      doomscrolling: Boolean(r.doomscrolling),
+      slouching: Boolean(r.slouching),
+      sleeping: Boolean(r.sleeping),
+      drinkingWater: Boolean(r.drinkingWater),
+    }));
+  const latest = readings[readings.length - 1] || null;
+  return {
+    latest: latest && { ...latest, tempC: tmp117ToCelsius(latest.tempRaw) },
+    doomscrollingDurationMs: streakDurationMs(readings, "doomscrolling"),
+    sleepDurationMs: streakDurationMs(readings, "sleeping"),
+    slouchingDurationMs: streakDurationMs(readings, "slouching"),
+    alerts: evaluateSensorThresholds(readings, sensorThresholdsMs),
+  };
+}
 app.get("/api/state", (req, res) => {
   res.json({
     name: get("account").name,
@@ -247,28 +271,12 @@ app.get("/api/state", (req, res) => {
       configured: Boolean(get("robotKeyHash")),
       lastSeen: get("robotLastSeen"),
     },
+    sensors: sensorSummary(),
     publicKey: vapid.publicKey,
   });
 });
 app.get("/api/sensors/latest", (req, res) => {
-  const readings = db
-    .prepare(
-      "SELECT * FROM sensor_readings WHERE createdAt>=? ORDER BY createdAt ASC",
-    )
-    .all(new Date(Date.now() - 48 * 3600000).toISOString())
-    .map((r) => ({
-      ...r,
-      doomscrolling: Boolean(r.doomscrolling),
-      slouching: Boolean(r.slouching),
-      sleeping: Boolean(r.sleeping),
-      drinkingWater: Boolean(r.drinkingWater),
-    }));
-  const latest = readings[readings.length - 1] || null;
-  res.json({
-    latest: latest && { ...latest, tempC: tmp117ToCelsius(latest.tempRaw) },
-    doomscrollingDurationMs: streakDurationMs(readings, "doomscrolling"),
-    sleepDurationMs: streakDurationMs(readings, "sleeping"),
-  });
+  res.json(sensorSummary());
 });
 app.post("/api/habits", (req, res) => {
   const h = validateHabit(req.body);

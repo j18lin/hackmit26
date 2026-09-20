@@ -12,6 +12,8 @@ import cv2
 import numpy as np
 from ai_edge_litert.interpreter import Interpreter
 
+from constants import CONF_THRESHOLD, FORWARD_HEAD_THRESHOLD, SMOOTHING_ALPHA
+
 MODEL_PATH = "models/movenet_lightning.tflite"
 INPUT_SIZE = 192  # MoveNet Lightning expects 192x192
 
@@ -24,9 +26,6 @@ KEYPOINT_EDGES = [
     (5, 6), (5, 7), (7, 9), (6, 8), (8, 10),
     (5, 11), (6, 12), (11, 12), (11, 13), (13, 15), (12, 14), (14, 16),
 ]
-
-CONF_THRESHOLD = 0.3
-
 
 def load_interpreter(model_path):
     interpreter = Interpreter(model_path=model_path)
@@ -47,9 +46,6 @@ def run_movenet(interpreter, frame_rgb):
     keypoints = interpreter.get_tensor(output_details[0]["index"])
     # shape: [1, 1, 17, 3] -> (y, x, confidence) normalized 0-1
     return keypoints[0, 0, :, :]
-
-
-SMOOTHING_ALPHA = 0.4  # lower = smoother/laggier, higher = snappier/more jitter
 
 
 class KeypointSmoother:
@@ -83,9 +79,6 @@ class KeypointSmoother:
                 self.state[i, 2] = self.alpha * conf + (1 - self.alpha) * self.state[i, 2]
 
         return self.state
-
-
-FORWARD_HEAD_THRESHOLD = 0.35
 
 
 def check_posture(keypoints):

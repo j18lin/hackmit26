@@ -8,6 +8,7 @@ import {
   validateSensorReading,
   tmp117ToCelsius,
   streakDurationMs,
+  evaluateSensorThresholds,
 } from "../server/domain.js";
 const habit = {
   name: " Slouching ",
@@ -122,4 +123,21 @@ test("streak duration sums only the unbroken run of true readings up to now", ()
   );
   assert.equal(streakDurationMs(readings, "doomscrolling", base + 300000), 0);
   assert.equal(streakDurationMs([], "sleeping"), 0);
+});
+test("sensor thresholds flag only fields whose streak has crossed their limit", () => {
+  const base = Date.parse("2026-09-19T00:00:00Z");
+  const readings = [
+    { createdAt: new Date(base).toISOString(), slouching: true, doomscrolling: false },
+    { createdAt: new Date(base + 600000).toISOString(), slouching: true, doomscrolling: false },
+  ];
+  const now = base + 20 * 60000; // 20 minutes after the streak started
+  const result = evaluateSensorThresholds(
+    readings,
+    { slouching: 15 * 60000, doomscrolling: 15 * 60000 },
+    now,
+  );
+  assert.equal(result.slouching.durationMs, 20 * 60000);
+  assert.equal(result.slouching.exceeded, true);
+  assert.equal(result.doomscrolling.durationMs, 0);
+  assert.equal(result.doomscrolling.exceeded, false);
 });

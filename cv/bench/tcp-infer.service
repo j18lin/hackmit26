@@ -1,0 +1,14 @@
+[Unit]
+Description=Nudge CV TCP inference server (MoveNet + EfficientDet-Lite0 + int8 classifier)
+After=network.target
+
+[Service]
+Type=simple
+User=arduino
+WorkingDirectory=/home/arduino/bench
+ExecStart=/usr/bin/python3 -u tcp_infer_server.py --port 5005
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

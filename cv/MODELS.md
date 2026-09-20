@@ -62,6 +62,35 @@ implementation detail.
 - `sleeping` is not implemented (always `False`). `tempRaw` is a fixed
   placeholder (`2700`, no real temp sensor wired up).
 
+## Evaluating: Edge Impulse transfer-learning classifier (int8 vs float32)
+
+- **Files:** `new-models/ei-daniellonedgeimpulse-project-1-transfer-learning-tensorflow-lite-int8-quantized-model.35.lite`
+  (631KB) and the `-float32-` sibling (1.67MB) — exports of the same Edge
+  Impulse "project-1" transfer-learning model, version 35.
+- **Architecture (from parsing the flatbuffer, no labels/metadata embedded):**
+  MobileNet-style transfer-learning classifier — 176 tensors, 66 ops, all
+  `CONV_2D` / `DEPTHWISE_CONV_2D` / `FULLY_CONNECTED` / `ADD` / `RESHAPE` /
+  `SOFTMAX`. Input `[1, 96, 96, 3]`, output `[1, 3]` (3-class softmax).
+  Classes are not labeled anywhere in the file — need to pull labels from
+  the Edge Impulse project itself before the output is meaningful beyond
+  class index.
+- **Quantization:** the int8 model is fully integer — both input and output
+  tensors are `INT8` with their own scale/zero-point (input: scale
+  `0.00392`, zero point `-128`, i.e. plain `[0,1]` normalization then
+  int8-mapped; output: scale `0.00391`, zero point `-128`). All the ops used
+  support int8 kernels, so this is true full-integer inference, not just
+  weight quantization — no float fallback ops in the graph.
+- **Why we want this on-device:** ~2.6x smaller than the float32 export and
+  full-integer inference is generally the fastest path on ARM (no float
+  unit dependency), so it's the better candidate for the Arduino Uno Q than
+  the float32 version.
+- **Status:** not yet benchmarked on-device. `bench/bench_classify.py` runs
+  it against a static test image (int8 quantize-in/dequantize-out done
+  manually since the interpreter won't do that conversion for an
+  already-int8 model) — see `DEVICE.md` for the deploy/run steps. Camera
+  capture is still blocked on this board (see "Target hardware" below), so
+  this uses `test_frame.jpg` rather than live frames for now.
+
 ## Known divergence to watch
 
 `phone_detection/phone_proximity.py` is the file being actively edited/fixed

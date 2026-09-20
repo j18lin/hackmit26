@@ -105,6 +105,19 @@ export function streakDurationMs(readings, field, now = Date.now()) {
   return now - new Date(start).getTime();
 }
 
+// Runs streakDurationMs for every thresholded field (thresholds come from
+// config/constants.yaml via server/constants.js — this module stays I/O-free
+// for easy testing) and reports whether each one has crossed its limit, so
+// the frontend can render a per-habit alert without doing any math itself.
+export function evaluateSensorThresholds(readings, thresholds, now = Date.now()) {
+  const result = {};
+  for (const [field, thresholdMs] of Object.entries(thresholds)) {
+    const durationMs = streakDurationMs(readings, field, now);
+    result[field] = { durationMs, thresholdMs, exceeded: durationMs >= thresholdMs };
+  }
+  return result;
+}
+
 export function validateSubscription(subscription) {
   if (!subscription || typeof subscription.endpoint !== "string")
     throw new Error("Invalid push subscription.");
