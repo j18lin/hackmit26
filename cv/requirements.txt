@@ -1,6 +1,0 @@
-ai-edge-litert
-opencv-python
-numpy
-requests
-pyyaml
-mediapipe==0.10.14  # pinned: 1.0+ dropped the mp.solutions.pose API our slouch heuristic uses
