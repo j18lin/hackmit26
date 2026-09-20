@@ -1,6 +1,6 @@
 # Nudge sensor ingestion API
 
-Reference for pushing CV-detected labels into the Nudge dashboard backend
+Reference for pushing CV-detected violations into the Nudge dashboard backend
 (`hackmit26` repo). Written for an agent/script that only needs to send
 data — it does not need to read the dashboard frontend or database schema.
 
@@ -29,41 +29,33 @@ Authorization: Bearer <ROBOT_KEY>
   cookie-authenticated browser requests), but the bearer key itself must be
   correct or the request is rejected with `401`.
 
-## Endpoint: continuous sensor snapshot
+## Endpoint: report a violation
 
 ```
-POST /api/robot/sensors
+POST /api/robot/violations
 Content-Type: application/json
 Authorization: Bearer <ROBOT_KEY>
 ```
 
-This is the one to use for "binary label + timestep" data — one row per
-detector poll. The server assigns the timestamp itself; do not send one.
+The Arduino/inference side decides on-device when a sensed habit has been
+violated (e.g. slouching continuously past its own duration threshold,
+tracked in whatever code is doing the repeated polling) and calls this once
+per crossing. The server does no threshold math at all — this is literally
+"state += 1" for that field. Do not call it once per poll/frame; only call
+it when your own logic has decided a violation just happened.
 
 ### Request body
 
 ```json
-{
-  "doomscrolling": true,
-  "slouching": false,
-  "sleeping": false,
-  "drinkingWater": false,
-  "tempRaw": 2734
-}
+{ "field": "slouching" }
 ```
 
 | field | type | constraints |
 |---|---|---|
-| `doomscrolling` | boolean | required, strict `true`/`false` (no `1`/`0`/`"true"`) |
-| `slouching` | boolean | required, same as above |
-| `sleeping` | boolean | required, same as above |
-| `drinkingWater` | boolean | required, same as above |
-| `tempRaw` | integer | required, TMP117 raw 16-bit signed register value, range `-32768`–`32767`. If you don't have a real temp sensor, send any plausible placeholder in range (e.g. `2700`, which converts to ~21°C) |
+| `field` | string | required, one of: `doomscrolling`, `slouching`, `sleeping`, `drinkingWater` |
 
-Any missing/wrong-typed field returns `400` with a descriptive `{"error": "..."}`
-message (see `hackmit26/server/domain.js`, `validateSensorReading`).
-
-Temperature conversion (if you need °C yourself): `tempC = tempRaw * 0.0078125`.
+Any missing/unknown `field` returns `400` with a descriptive `{"error": "..."}`
+message (see `hackmit26/server/domain.js`, `validateViolation`).
 
 ### Response
 
@@ -75,24 +67,35 @@ Temperature conversion (if you need °C yourself): `tempC = tempRaw * 0.0078125`
 ### Example
 
 ```sh
-curl -s -X POST http://localhost:3001/api/robot/sensors \
+curl -s -X POST http://localhost:3001/api/robot/violations \
   -H "Authorization: Bearer $ROBOT_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"doomscrolling":true,"slouching":false,"sleeping":false,"drinkingWater":false,"tempRaw":2734}'
+  -d '{"field":"slouching"}'
 ```
 
 ### Reference implementation
 
-`phone_detection/monitor_arduino.py` already does this — reads
-`ROBOT_KEY`/`API_BASE` from `.env`, gets a computed reading back from the
-Arduino's inference server, and POSTs it:
+`phone_detection/monitor_arduino.py` calls this endpoint — reads
+`ROBOT_KEY`/`API_BASE` from `.env`, sends a frame to the Arduino's
+`bench/tcp_infer_server.py`, and posts a violation for whichever field(s)
+come back in that server's `violations` list:
 
 ```sh
 python3 phone_detection/monitor_arduino.py --arduino-host 10.31.181.91 --image mac_webcam.jpg
 python3 phone_detection/monitor_arduino.py --arduino-host 10.31.181.91 --image mac_webcam.jpg --dry-run
 ```
 
-## Endpoint: discrete habit occurrence (alternative, not used by monitor_arduino.py)
+The duration-threshold decision ("how long is too long") lives entirely
+on-device, in `tcp_infer_server.py`'s `ViolationTracker` — it tracks, per
+field, how long it's been continuously true (wall-clock, in server-process
+memory, across connections) and only reports a field once its streak
+crosses that field's own threshold. This script itself is single-shot (one
+image in, one inference call out) and has no threshold logic of its own —
+running it repeatedly (loop/cron) against the same long-lived server still
+measures duration correctly, since the state lives on the Arduino, not in
+this script.
+
+## Endpoint: discrete habit occurrence (alternative)
 
 ```
 POST /api/robot/events
@@ -102,9 +105,10 @@ Content-Type: application/json
 {"habitId": "<uuid>"}
 ```
 
-Use this instead of `/api/robot/sensors` if you want to log a single
-one-off occurrence tied to a specific habit (not a continuous boolean
-state). `habitId` must match an existing, active habit — see the `habits`
+Use this instead of `/api/robot/violations` if you want to log an
+occurrence tied to a specific habit row directly (affects that habit's
+daily-limit count on the dashboard), rather than a generic sensor-tracked
+field. `habitId` must match an existing, active habit — see the `habits`
 table in `hackmit26/data/nudge.sqlite`, or `GET /api/state` (session auth
 required) for the current list and their categories:
 
@@ -119,13 +123,14 @@ Query the SQLite DB directly:
 
 ```sh
 sqlite3 /Users/fumiokutsu/Documents/hackmit26/data/nudge.sqlite \
-  "SELECT * FROM sensor_readings ORDER BY createdAt DESC LIMIT 10;" -header -column
+  "SELECT * FROM violations ORDER BY createdAt DESC LIMIT 10;" -header -column
 ```
 
-## What NOT to expect
+## What to expect
 
-- The dashboard frontend does **not** currently render `sensor_readings`
-  data (no chart/panel exists for it yet). Pushing data only visibly
-  updates the "Last seen" pill on the **Devices & robot** page. Don't treat
-  an unchanged dashboard as a failed push — check the DB or hit
-  `GET /api/sensors/latest` (needs a session cookie) to confirm ingestion.
+- The dashboard's **Devices & robot** page shows a "Sensor-detected
+  violations" panel with a per-field count and last-seen time over the
+  configured window (`config/constants.yaml`, `violations.windowHours`,
+  48h by default). Pushing a violation also updates the "Last seen" pill.
+- `GET /api/violations/latest` (needs a session cookie) returns the same
+  summary the dashboard uses: `{ windowHours, counts: {field: n}, lastAt: {field: iso|null} }`.

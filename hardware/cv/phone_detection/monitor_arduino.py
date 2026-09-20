@@ -3,13 +3,20 @@ Arduino-offloaded sensor loop for the Nudge dashboard.
 
 Grabs/loads a frame, ships it over TCP to bench/tcp_infer_server.py running
 on the Arduino Uno Q (MoveNet Lightning + EfficientDet-Lite0 + the int8 Edge
-Impulse classifier, all running on-device, heuristics computed on-device too
--- see that file), and POSTs whatever {doomscrolling, slouching, sleeping,
-drinkingWater, tempRaw} reading comes back. No CV dependency (opencv,
-tflite, etc.) needed on the Mac side at all -- just `requests`.
+Impulse classifier, all running on-device). That server also decides
+on-device whether a habit has actually been *violated* -- i.e. a field has
+been continuously true for longer than its own duration threshold, tracked
+in its ViolationTracker -- and returns a `violations` list of fields that
+just crossed their threshold on this call. This script only POSTs those to
+the backend's /api/robot/violations; it has no duration/threshold logic of
+its own. No CV dependency (opencv, tflite, etc.) needed on the Mac side at
+all -- just `requests`.
 
 For now this runs a single shot against a static image (e.g. a photo taken
-from the Mac's own webcam) rather than a continuous camera loop.
+from the Mac's own webcam) rather than a continuous camera loop. The
+server's duration tracking is wall-clock based, though, so running this
+repeatedly (e.g. in a loop or cron) against the same long-lived server
+still correctly measures continuous duration across calls.
 
 Usage:
     python3 monitor_arduino.py --arduino-host 10.31.181.91 --image ../mac_webcam.jpg
@@ -75,15 +82,22 @@ def run_inference_on_arduino(host: str, port: int, jpeg_bytes: bytes) -> dict:
     return result
 
 
-def push_reading(api_base: str, robot_key: str, reading: dict) -> dict:
-    resp = requests.post(
-        f"{api_base}/api/robot/sensors",
-        headers={"Authorization": f"Bearer {robot_key}"},
-        json=reading,
-        timeout=10,
-    )
-    resp.raise_for_status()
-    return resp.json()
+def push_violations(api_base: str, robot_key: str, violations: list[str]) -> list[dict]:
+    """Posts one violation per field the Arduino's ViolationTracker just
+    fired for on this call (see tcp_infer_server.py) -- the duration
+    decision already happened on-device; this just relays it.
+    """
+    responses = []
+    for field in violations:
+        resp = requests.post(
+            f"{api_base}/api/robot/violations",
+            headers={"Authorization": f"Bearer {robot_key}"},
+            json={"field": field},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        responses.append({"field": field, **resp.json()})
+    return responses
 
 
 def main():
@@ -125,15 +139,20 @@ def main():
     print(f"classify: {result['classify_info']}")
 
     reading = result["reading"]
+    violations = result["violations"]
     print(f"reading: {reading}")
+    print(f"violations (duration threshold crossed on-device): {violations}")
 
     if args.dry_run:
         print("(dry-run) not pushed to backend")
         return 0
 
     try:
-        response = push_reading(api_base, robot_key, reading)
-        print(f"[{time.strftime('%H:%M:%S')}] pushed to {api_base}/api/robot/sensors -> {response}")
+        responses = push_violations(api_base, robot_key, violations)
+        if responses:
+            print(f"[{time.strftime('%H:%M:%S')}] pushed to {api_base}/api/robot/violations -> {responses}")
+        else:
+            print("no field crossed its violation duration threshold on this call; nothing to push")
     except requests.RequestException as error:
         print(f"push failed: {error}", file=sys.stderr)
         return 1

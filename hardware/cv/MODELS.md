@@ -45,11 +45,12 @@ Three TFLite models, all running on-device on the Arduino Uno Q via
 `phone_detection/monitor_arduino.py` (Mac side) sends a JPEG to the
 Arduino's `tcp_infer_server.py`, which runs all three models and computes
 `{doomscrolling, slouching, sleeping, drinkingWater, tempRaw}` on-device,
-then the Mac script POSTs that reading to `/api/robot/sensors` — see
-`SENSOR_API.md` for the API contract.
+then the Mac script posts one `/api/robot/violations` call per field that
+came back `true` — see `SENSOR_API.md` for the API contract.
 
-`sleeping` is not implemented (always `False`). `tempRaw` is a fixed
-placeholder (`2700`, no real temp sensor wired up).
+`sleeping` is not implemented (always `False`). `tempRaw` is currently
+unused by the violations API (kept in the on-device reading for now, no
+real temp sensor wired up either).
 
 ## Target hardware
 

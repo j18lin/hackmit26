@@ -4,13 +4,21 @@ TCP inference server for the Arduino Uno Q (Linux/QRB2210 side).
 Accepts a single JPEG frame per connection over a raw length-prefixed TCP
 protocol, runs it through MoveNet Lightning (pose), EfficientDet-Lite0
 (detect), and the int8 Edge Impulse classifier -- entirely on-device -- and
-sends back a JSON result with the Nudge sensor-reading booleans already
-computed (forward-head/slouch heuristic on MoveNet keypoints, object-
-proximity heuristic on EfficientDet detections -- see check_slouching and
-check_proximity_states below), plus each model's inference time and
-server-side receive/decode time. The client
-(see monitor_arduino.py) just forwards that reading to the dashboard's
-POST /api/robot/sensors -- no CV logic runs off-device.
+computes the instantaneous Nudge sensor booleans (forward-head/slouch
+heuristic on MoveNet keypoints, object-proximity heuristic on EfficientDet
+detections -- see check_slouching and check_proximity_states below).
+
+The backend's /api/robot/violations endpoint does no threshold/duration
+math at all -- it just counts whatever it's told (see ../SENSOR_API.md).
+So the "has this habit actually been violated" decision -- i.e. has a
+field been continuously true for longer than its own duration threshold --
+also happens here, on-device, in ViolationTracker. That state lives in
+this process (module-level, keyed by field) and persists across
+connections, so it correctly measures wall-clock duration regardless of
+how often the client happens to poll. The server reports both the raw
+instantaneous `reading` and a `violations` list (fields whose duration
+threshold was just crossed on this call, i.e. fire-once-per-streak); the
+client (see monitor_arduino.py) only POSTs the fields in `violations`.
 
 Wire protocol (client -> server): 4-byte big-endian length, then that many
 JPEG bytes. Server -> client: 4-byte big-endian length, then that many
@@ -58,6 +66,49 @@ PROXIMITY_THRESHOLD = 0.6
 PERSON_LABEL = "person"
 LABEL_STATES = {"cell phone": "on phone", "bottle": "drinking"}
 WATCHED_LABELS = set(LABEL_STATES)
+
+# --- violation duration thresholds (seconds a field must be *continuously*
+# true before it counts as an actual violation worth reporting -- these are
+# rough guesses, not tuned). `sleeping` isn't detected yet (see MODELS.md)
+# so its threshold is moot until that heuristic exists. ---
+VIOLATION_DURATION_SEC = {
+    "doomscrolling": 10.0,
+    "slouching": 10.0,
+    "sleeping": 10.0,
+    "drinkingWater": 0.0,  # momentary by nature -- report as soon as seen
+}
+
+
+class ViolationTracker:
+    """Tracks, per sensor field, how long it's been continuously true.
+
+    Fires (returns True from `update`) at most once per continuous streak,
+    the moment cumulative true-duration crosses that field's threshold --
+    not on every poll after that point, and not at all if the field goes
+    false again before crossing it. State is wall-clock based so it doesn't
+    care how often or how regularly the client happens to send frames.
+    """
+
+    def __init__(self, thresholds: dict):
+        self.thresholds = thresholds
+        self.true_since = {field: None for field in thresholds}
+        self.reported = {field: False for field in thresholds}
+
+    def update(self, reading: dict, now: float) -> list[str]:
+        fired = []
+        for field, threshold in self.thresholds.items():
+            is_true = bool(reading.get(field))
+            if not is_true:
+                self.true_since[field] = None
+                self.reported[field] = False
+                continue
+            if self.true_since[field] is None:
+                self.true_since[field] = now
+                self.reported[field] = False
+            if not self.reported[field] and now - self.true_since[field] >= threshold:
+                self.reported[field] = True
+                fired.append(field)
+        return fired
 
 
 def load_interpreter(model_path):
@@ -198,7 +249,7 @@ def recv_exact(sock, n):
     return bytes(buf)
 
 
-def handle_connection(conn, interpreters, labels):
+def handle_connection(conn, interpreters, labels, tracker):
     server_recv_start = time.perf_counter()
     (length,) = struct.unpack(">I", recv_exact(conn, 4))
     jpeg_bytes = recv_exact(conn, length)
@@ -226,9 +277,11 @@ def handle_connection(conn, interpreters, labels):
         "drinkingWater": "drinking" in states,
         "tempRaw": 2700,  # placeholder, no real temp sensor wired up yet
     }
+    violations = tracker.update(reading, time.time())
 
     result = {
         "reading": reading,
+        "violations": violations,
         "bytes_received": length,
         "server_recv_ms": round(server_recv_ms, 2),
         "decode_ms": round(decode_ms, 2),
@@ -265,6 +318,7 @@ def main():
         "classify": load_interpreter(CLASSIFY_MODEL_PATH),
     }
     labels = load_labels(LABELMAP_PATH)
+    tracker = ViolationTracker(VIOLATION_DURATION_SEC)
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_sock:
         server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -277,7 +331,7 @@ def main():
             with conn:
                 print(f"Connection from {addr}", flush=True)
                 try:
-                    result = handle_connection(conn, interpreters, labels)
+                    result = handle_connection(conn, interpreters, labels, tracker)
                     print(f"  -> {result}", flush=True)
                 except Exception as e:
                     print(f"  error handling connection: {e}", flush=True)
